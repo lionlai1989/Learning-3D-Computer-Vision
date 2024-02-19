@@ -1,0 +1,89 @@
+# Learning 3D Computer Vision
+
+3D computer vision enables us to understand the spatial arrangement, orientation, shape,
+and volumetric characteristics of objects in the 3D world, leading to high-level
+semantic insights. This repository is dedicated to tutorials on 3D computer vision,
+focusing solely on learning-based methodologies, particularly with neural networks.
+
+## Table of Contents
+
+### [3D Object Representations](https://htmlpreview.github.io/?https://github.com/lionlai1989/Learning-3D-Computer-Vision/blob/main/3D_Object_Representations/3D_Object_Representations.html)
+
+This notebook introduces common formats for representing 3D objects, including meshes,
+point clouds, and voxels. It demonstrates how to use PyTorch3D for rendering these
+representations, as illustrated below:
+
+<div style="text-align:center">
+  <img src="./3D_Object_Representations/output/ironman_mesh.gif" height="256">
+  <img src="./3D_Object_Representations/output/Palac_Moszna_pointcloud.gif" height="256">
+  <img src="./3D_Object_Representations/output/cow_voxel.gif" height="256">
+  <p style="font-size: 14px; color: #777;">Left: meshes. Middle: point clouds. Right: voxels.</p>
+</div>
+
+### [Supervised Single-View to 3D Objects]()
+
+## Getting Started
+
+All the results can be reproduced by following the instructions below.
+
+### System Dependencies
+
+-   NVIDIA driver, CUDA Toolkit, and cuDNN libraries: The system must installed recent
+    NVIDIA driver, CUDA Toolkit, and cuDNN libraries, which are prerequisites for
+    PyTorch and PyTorch3D. Here are the software versions which have been tested:
+
+    ```none
+    NVIDIA driver: 530.30.02
+    cuda toolkit: 12.1
+    cudnn: 8.9.7
+    ```
+
+    If you encounter any problems while installing or updating them, you could consult
+    [this guide](https://lionlai1989.github.io/nvidia-gpu-setup-guide/).
+
+-   Python3: `Python 3.10` is used throughout all the developments for the problems.
+
+### Install Python and NVIDIA requirements
+
+-   Create and activate a Python virtual environment named `venv_3d_cv`, and update
+    `pip`, `setuptools`, and `wheel`:
+
+    ```shell
+    python3.10 -m venv venv_3d_cv \
+    && source venv_3d_cv/bin/activate \
+    && python3 -m pip install --upgrade pip setuptools wheel
+    ```
+
+-   Install required general Python packages:
+
+    ```shell
+    python3 -m pip install -r requirements.txt
+    ```
+
+-   Install required NVIDIA Python packages:
+
+    ```shell
+    python3 -m pip install nvidia-pyindex && python3 -m pip install -r nvidia_requirements.txt
+    ```
+
+### Install PyTorch and PyTorch3D
+
+-   Please visit the PyTorch official website to find the command to use for your
+    system:
+
+    ```shell
+    python3 -m pip install torch torchvision torchaudio
+    ```
+
+-   The installation guide of PyTorch3D can be found
+    [here](https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md):
+
+    ```shell
+    python3 -m pip install fvcore iopath && python3 -m pip install "git+https://github.com/facebookresearch/pytorch3d.git@stable"
+    ```
+
+### Running Jupyter Notebook
+
+Now you are ready to go to each folder and run the python script and the Jupyter
+Notebook. Please remember to select the kernel you just created in your virtual
+environment `venv_3d_cv`.
