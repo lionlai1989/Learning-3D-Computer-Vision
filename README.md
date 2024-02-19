@@ -7,7 +7,7 @@ focusing solely on learning-based methodologies, particularly with neural networ
 
 ## Table of Contents
 
-### [3D Object Representations](https://htmlpreview.github.io/?https://github.com/lionlai1989/Learning-3D-Computer-Vision/blob/main/3D_Object_Representations/3D_Object_Representations.html)
+### [3D Object Representations](https://htmlpreview.github.io/?https://github.com/lionlai1989/Learning-3D-Computer-Vision/blob/master/3D_Object_Representations/3D_Object_Representations.html)
 
 This notebook introduces common formats for representing 3D objects, including meshes,
 point clouds, and voxels. It demonstrates how to use PyTorch3D for rendering these
