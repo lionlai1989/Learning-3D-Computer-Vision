@@ -1,0 +1,40 @@
+einops
+jaxtyping
+beartype==0.15.0
+numpy
+tabulate
+scipy
+tqdm
+omegaconf
+wandb
+# torchsummaryX this may not be needed.
+omegaconf
+
+# Graphing library
+matplotlib
+plotly
+imageio
+
+# Formatter
+ruff
+black
+
+# Testing
+pytest
+
+# Jupyter notebook
+jupyterlab
+ipywidgets
+
+# Downloading data
+# objaverse
+
+# Processing point cloud
+laspy[lazrs,laszip]
+
+# Processing mesh
+trimesh
+pyglet
+
+# Processing voxel
+PyMCubes
