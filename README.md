@@ -22,6 +22,28 @@ representations, as illustrated below:
 
 ### [Supervised Single-View to 3D Objects](https://lionlai1989.github.io/supervised-single-view-to-3d-objects/)
 
+3D reconstruction from a single view is very similar to the process through which we
+recognize objects in the real world. When we look at a chair from one angle, we know it
+is a chair and can intuitively imagine what it would look like from other angles. It’s
+not like a chair viewed from one angle will look like an airplane from another angle.
+That being said, if you were determined to design an airplane that looks like a chair
+from a specific viewpoint, then everything in this post is inapplicable. 🤣
+
+<div style="text-align:center">
+  <figure style="display: inline-block;">
+    <img src="./Supervised_Single_View_to_3D_Objects/evaluation/pc_gt_600.gif" height="256">
+    <figcaption style="font-size: 14px; color: #777;">Ground truth point cloud</figcaption>
+  </figure>
+  <figure style="display: inline-block;">
+    <img src="./Supervised_Single_View_to_3D_Objects/evaluation/image_600.png" height="256">
+    <figcaption style="font-size: 14px; color: #777;">Single view image</figcaption>
+  </figure>
+  <figure style="display: inline-block;">
+    <img src="./Supervised_Single_View_to_3D_Objects/evaluation/pc_eval_600.gif" height="256">
+    <figcaption style="font-size: 14px; color: #777;">Predicted point cloud</figcaption>
+  </figure>
+</div>
+
 ## Getting Started
 
 All the results can be reproduced by following the instructions below.
@@ -87,3 +109,8 @@ All the results can be reproduced by following the instructions below.
 Now you are ready to go to each folder and run the python script and the Jupyter
 Notebook. Please remember to select the kernel you just created in your virtual
 environment `venv_3d_cv`.
+
+## Acknowledgments
+
+This repository is a compilation of materials gathered from various online sources, each
+cited to acknowledge their origin.
