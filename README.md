@@ -30,15 +30,15 @@ That being said, if you were determined to design an airplane that looks like a 
 from a specific viewpoint, then everything in this post is inapplicable. 🤣
 
 <div style="text-align:center">
-  <figure style="display: inline-block;">
+  <figure style="display: inline-block; margin: 0 10px;">
     <img src="./Supervised_Single_View_to_3D_Objects/evaluation/pc_gt_600.gif" height="256">
     <figcaption style="font-size: 14px; color: #777;">Ground truth point cloud</figcaption>
   </figure>
-  <figure style="display: inline-block;">
+  <figure style="display: inline-block; margin: 0 10px;">
     <img src="./Supervised_Single_View_to_3D_Objects/evaluation/image_600.png" height="256">
     <figcaption style="font-size: 14px; color: #777;">Single view image</figcaption>
   </figure>
-  <figure style="display: inline-block;">
+  <figure style="display: inline-block; margin: 0 10px;">
     <img src="./Supervised_Single_View_to_3D_Objects/evaluation/pc_eval_600.gif" height="256">
     <figcaption style="font-size: 14px; color: #777;">Predicted point cloud</figcaption>
   </figure>
