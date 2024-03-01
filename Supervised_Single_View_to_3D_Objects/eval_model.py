@@ -1,4 +1,5 @@
 import argparse
+import math
 import sys
 import time
 from pathlib import Path
@@ -11,46 +12,32 @@ import pytorch3d
 import torch
 from pytorch3d.datasets.r2n2.utils import collate_batched_R2N2
 from pytorch3d.ops import knn_points, sample_points_from_meshes
+from pytorch3d.transforms import Rotate, axis_angle_to_matrix
 from tqdm import tqdm
 
 import dataset_location
-from model import SingleViewto3D
+from model_mesh import MeshModel
+from model_point import PointModel
+from model_vox import VoxModel
 from myutils import (
     Mem2Ref,
     get_device,
     render_mesh,
     render_pointcloud,
+    render_rotating_meshes,
     render_rotating_pointclouds,
     render_rotating_voxels,
-    render_rotating_meshes,
     render_voxels_as_mesh,
 )
 from r2n2_custom import R2N2
-from pytorch3d.transforms import Rotate, axis_angle_to_matrix
-import math
-import numpy as np
+
+import warnings
+
+warnings.filterwarnings(
+    "ignore", category=UserWarning, message="TypedStorage is deprecated"
+)
 
 EVAL_DIR = Path("./evaluation")
-
-
-def get_args_parser():
-    parser = argparse.ArgumentParser("Singleto3D", add_help=False)
-    parser.add_argument("--arch", default="resnet18", type=str)
-    parser.add_argument("--max_iter", default=10000, type=str)
-    parser.add_argument("--vis_freq", default=1, type=str)
-    parser.add_argument("--batch_size", default=1, type=int)
-    parser.add_argument("--num_workers", default=0, type=str)
-    parser.add_argument(
-        "--type", default="vox", choices=["vox", "point", "mesh"], type=str
-    )
-    parser.add_argument("--n_points", default=5000, type=int)
-    parser.add_argument("--w_chamfer", default=1.0, type=float)
-    parser.add_argument("--w_smooth", default=0.1, type=float)
-    parser.add_argument("--load_checkpoint", action="store_true")
-    parser.add_argument("--device", default="cuda", type=str)
-    parser.add_argument("--load_feat", action="store_true")
-    parser.add_argument("--unit_test", default=False, type=bool)
-    return parser
 
 
 def preprocess(feed_dict, args):
@@ -172,11 +159,17 @@ def evaluate_model(args):
         drop_last=True,
     )
 
-    model = SingleViewto3D(args)
+    if args.type == "vox":
+        model = VoxModel(args)
+    elif args.type == "point":
+        model = PointModel(arch=args.arch, n_points=args.n_points)
+    elif args.type == "mesh":
+        model = MeshModel(args)
+    else:
+        raise ValueError
     model.to(args.device)
     model.eval()
 
-    start_iter = 0
     start_time = time.time()
 
     thresholds = [0.01, 0.02, 0.03, 0.04, 0.05]
@@ -186,14 +179,16 @@ def evaluate_model(args):
     avg_p_score = []
     avg_r_score = []
 
-    if args.load_checkpoint:
-        # checkpoint = torch.load(f"./supervised_single_view_to_3D/checkpoint_{args.type}.pth")
-        checkpoint = torch.load(f"./checkpoint_{args.type}.pth")
+    if args.load_checkpoint_epoch:
+        checkpoint_path = (
+            f"checkpoint_{args.type}_epoch_{args.load_checkpoint_epoch:03}.pth"
+        )
+        checkpoint = torch.load(checkpoint_path)
         model.load_state_dict(checkpoint["model_state_dict"])
-        print(f"Succesfully loaded iter {start_iter}")
+        print(f"Successfully load {checkpoint_path}")
 
-    print("Starting evaluating !")
     num_batch = len(eval_loader)
+    print(f"Starting evaluating {num_batch} batches.")
 
     for index, feed_dict in enumerate(tqdm(eval_loader)):
 
@@ -205,44 +200,55 @@ def evaluate_model(args):
         read_time = time.time() - read_start_time
 
         predictions = model(images_gt, args)
-        # print(f"For {args.type}, the predictions' shape is {predictions.shape}")
 
-        # if args.type == "vox":
-        #     predictions = predictions.permute(0, 1, 4, 3, 2)
-
-        try:
-            metrics = evaluate(predictions, mesh_gt, thresholds, args)
-        except ValueError:
-            continue
+        metrics = evaluate(predictions, mesh_gt, thresholds, args)
 
         if (index % args.vis_freq) == 0:
+            # Save input image
             img = images_gt.cpu().numpy()[0, ...]
-            img *= 255 # (137, 137, 3) <class 'numpy.ndarray'> float32 0.0 239.0
-            imageio.imwrite(f"./evaluation/gt_{index}.png", img.astype(np.uint8))
+            img *= 255
+            imageio.imwrite(f"./evaluation/image_{index}.png", img.astype(np.uint8))
 
-            if args.type == "vox":
-                img = render_rotating_voxels(
-                    predictions.squeeze(0), get_device(), image_size=512
-                )
-                imageio.mimsave(EVAL_DIR / f"voxel_eval_{index}.gif", img, fps=12)
+            # if args.type == "vox":
+            #     img = render_rotating_voxels(
+            #         predictions.squeeze(0), get_device(), image_size=512
+            #     )
+            #     imageio.mimsave(EVAL_DIR / f"voxel_eval_{index}.gif", img, fps=12)
+            # elif args.type == "point":
 
-            elif args.type == "point":
-                img = render_rotating_pointclouds(
-                    points=predictions, image_size=512, device=get_device()
-                )
-                imageio.mimsave(EVAL_DIR / f"pc_eval_{index}.gif", img, fps=12)
+            img = render_rotating_pointclouds(
+                points=predictions,
+                image_size=274,
+                device=get_device(),
+                background_color=(0, 0, 0),
+                radius=0.006,
+                dist=1.5,
+            )
+            imageio.mimsave(EVAL_DIR / f"pc_eval_{index}.gif", img, fps=12)
 
-            elif args.type == "mesh":
-                img = render_rotating_meshes(
-                    meshes=predictions, image_size=512, device=get_device()
-                )
-                imageio.mimsave(EVAL_DIR / f"mesh_eval_{index}.gif", img, fps=12)
+            img = render_rotating_pointclouds(
+                points=sample_points_from_meshes(mesh_gt, args.n_points).to(
+                    get_device()
+                ),
+                image_size=274,
+                device=get_device(),
+                background_color=(0, 0, 0),
+                radius=0.006,
+                dist=1.5,
+            )
+            imageio.mimsave(EVAL_DIR / f"pc_gt_{index}.gif", img, fps=12)
+
+            # elif args.type == "mesh":
+            #     # imgs = render_rotating_meshes(
+            #     #     meshes=predictions, image_size=512, device=get_device()
+            #     # )
+            #     imgs = render_turntable_mesh(predictions, image_size=256, device=None)
+            #     imageio.mimsave(EVAL_DIR / f"mesh_eval_{index}.gif", imgs, fps=12)
 
         total_time = time.time() - start_time
         iter_time = time.time() - iter_start_time
 
         f1_05 = metrics["F1@0.050000"]
-        print("f1_05: ", type(f1_05), f1_05.shape)
         avg_f1_score_05.append(f1_05)
         avg_p_score.append(
             torch.tensor([metrics["Precision@%f" % t] for t in thresholds])
@@ -250,21 +256,37 @@ def evaluate_model(args):
         avg_r_score.append(torch.tensor([metrics["Recall@%f" % t] for t in thresholds]))
         avg_f1_score.append(torch.tensor([metrics["F1@%f" % t] for t in thresholds]))
 
-    print(
-        f"[{index:4d}/{num_batch:4d}]; ttime: {total_time:.0f} ({read_time:.2f}, {iter_time:.2f}); F1@0.05: {f1_05:.3f}; Avg F1@0.05: {torch.tensor(avg_f1_score_05).mean().item():.3f}"
-    )
-
-    # break
+        # print(# f-string outputs "TypeError: unsupported format string passed to Tensor.__format__"
+        #     "[%-4d/%-4d]; ttime: %.0f (%.2f, %.2f); F1@0.05: %.3f; Avg F1@0.05: %.3f" %
+        #     (index, num_batch, total_time, read_time, iter_time, f1_05, torch.tensor(avg_f1_score_05).mean().item())
+        # )
 
     avg_f1_score = torch.stack(avg_f1_score).mean(0)
-
     save_plot(thresholds, avg_f1_score, args)
+
     print("Done!")
 
 
-# python3 eval_model.py --type "vox" --load_checkpoint
-# python3 eval_model.py --type "point" --load_checkpoint
-# python3 eval_model.py --type "mesh" --load_checkpoint
+def get_args_parser():
+    parser = argparse.ArgumentParser("Singleto3D", add_help=False)
+    parser.add_argument("--arch", default="resnet18", type=str)
+    parser.add_argument("--vis_freq", default=1, type=int)
+    parser.add_argument("--batch_size", default=1, type=int)
+    parser.add_argument("--num_workers", default=0, type=str)
+    parser.add_argument(
+        "--type", default="vox", choices=["vox", "point", "mesh"], type=str
+    )
+    parser.add_argument("--n_points", default=5000, type=int)
+    parser.add_argument("--w_chamfer", default=1.0, type=float)
+    parser.add_argument("--w_smooth", default=0.1, type=float)
+    parser.add_argument("--load_checkpoint_epoch", default=None, type=int)
+    parser.add_argument("--device", default="cuda", type=str)
+    parser.add_argument("--load_feat", action="store_true")
+    parser.add_argument("--unit_test", default=False, type=bool)
+    return parser
+
+
+# python3 eval_model.py --type "point" --load_checkpoint_epoch 100 --arch resnet18 --n_points 10000 --vis_freq 100
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Singleto3D", parents=[get_args_parser()])
     args = parser.parse_args()

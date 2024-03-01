@@ -1,31 +1,24 @@
-import torch
 import numpy as np
-import torch.nn.functional as F
 import pytorch3d
-
-from pytorch3d.io import load_obj, load_objs_as_meshes
-from pytorch3d.renderer.blending import BlendParams
-from pytorch3d.renderer.lighting import PointLights
-from pytorch3d.renderer.materials import Materials
-from pytorch3d.renderer.mesh.renderer import MeshRenderer
-from pytorch3d.renderer.mesh.rasterizer import MeshRasterizer, RasterizationSettings
-from pytorch3d.renderer.mesh.textures import TexturesVertex, Textures
-from pytorch3d.renderer.mesh.shader import SoftPhongShader, HardPhongShader
-from pytorch3d.renderer.points.renderer import PointsRenderer
-from pytorch3d.renderer.points.rasterizer import (
-    PointsRasterizer,
-    PointsRasterizationSettings,
-)
-from pytorch3d.renderer.points.compositor import AlphaCompositor
-from pytorch3d.renderer.implicit.renderer import VolumeRenderer
-from pytorch3d.renderer.implicit.raysampling import NDCMultinomialRaysampler
-from pytorch3d.renderer.implicit.raymarching import EmissionAbsorptionRaymarcher
+import torch
 from pytorch3d.renderer.cameras import (
-    look_at_view_transform,
-    look_at_rotation,
     FoVOrthographicCameras,
     FoVPerspectiveCameras,
+    look_at_rotation,
+    look_at_view_transform,
 )
+from pytorch3d.renderer.implicit.raymarching import EmissionAbsorptionRaymarcher
+from pytorch3d.renderer.implicit.raysampling import NDCMultinomialRaysampler
+from pytorch3d.renderer.implicit.renderer import VolumeRenderer
+from pytorch3d.renderer.mesh.rasterizer import MeshRasterizer, RasterizationSettings
+from pytorch3d.renderer.mesh.renderer import MeshRenderer
+from pytorch3d.renderer.mesh.shader import HardPhongShader, SoftPhongShader
+from pytorch3d.renderer.points.compositor import AlphaCompositor
+from pytorch3d.renderer.points.rasterizer import (
+    PointsRasterizationSettings,
+    PointsRasterizer,
+)
+from pytorch3d.renderer.points.renderer import PointsRenderer
 from pytorch3d.structures import Meshes, Pointclouds, Volumes
 
 XMIN = -0.5  # right (neg is left)
@@ -40,35 +33,10 @@ def get_device():
     return torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-def get_pointcloud_renderer(
-    image_size, device, radius=0.01, background_color=(0.5, 0.5, 0.5)
-):
-    raster_settings = PointsRasterizationSettings(
-        image_size=image_size,
-        radius=radius,
-    )
-    renderer = PointsRenderer(
-        rasterizer=PointsRasterizer(raster_settings=raster_settings),
-        compositor=AlphaCompositor(background_color=background_color),
-    )
-    return renderer
-
-
 def get_mesh_renderer(image_size=512, lights=None, device=None):
-    """
-    Returns a Pytorch3D Mesh Renderer.
-
-    Args:
-        image_size (int): The rendered image size.
-        lights: A default Pytorch3D lights object.
-        device (torch.device): The torch device to use (CPU or GPU). If not specified,
-            will automatically use GPU if available, otherwise CPU.
-    """
     if device is None:
-        if torch.cuda.is_available():
-            device = torch.device("cuda:0")
-        else:
-            device = torch.device("cpu")
+        device = get_device()
+
     raster_settings = RasterizationSettings(
         image_size=image_size,
         blur_radius=0.0,
@@ -81,30 +49,43 @@ def get_mesh_renderer(image_size=512, lights=None, device=None):
     return renderer
 
 
-def add_texture_to_mesh(mesh_gt):
+def get_pointcloud_renderer(
+    image_size, radius=0.01, background_color=(0.5, 0.5, 0.5), device=None
+):
+    raster_settings = PointsRasterizationSettings(
+        image_size=image_size,
+        radius=radius,
+    )
+    renderer = PointsRenderer(
+        rasterizer=PointsRasterizer(raster_settings=raster_settings),
+        compositor=AlphaCompositor(background_color=background_color),
+    )
+    return renderer
+
+
+def add_texture_to_mesh(mesh_gt, device=None):
+    if device is None:
+        device = get_device()
     vertices = mesh_gt.verts_list()
     faces = mesh_gt.faces_list()
 
-    # convert list to tensor
-    vertices = torch.cat(vertices)
-    faces = torch.cat(faces)
+    # Convert list to tensor
+    vertices = torch.cat(vertices).unsqueeze(0)
+    faces = torch.cat(faces).unsqueeze(0)
 
-    vertices = vertices.unsqueeze(0)  # (N_v, 3) -> (1, N_v, 3)
-    faces = faces.unsqueeze(0)  # (N_f, 3) -> (1, N_f, 3)
     color = [0.7, 0.7, 1]
 
-    textures = torch.ones_like(vertices)  # (1, N_v, 3)
-    textures = textures * torch.tensor(color).to(get_device())  # (1, N_v, 3)
+    textures = torch.ones_like(vertices) * torch.tensor(color).to(device)
 
     mesh_gt = pytorch3d.structures.Meshes(
         verts=vertices,
         faces=faces,
         textures=pytorch3d.renderer.TexturesVertex(textures),
     )
-
     return mesh_gt
 
-def render_rotating_meshes(meshes, image_size, device):
+
+def render_rotating_meshes(meshes, image_size, device, dist=2.7):
     mesh_input = add_texture_to_mesh(meshes)
     lights = pytorch3d.renderer.PointLights(location=[[0, 0.5, -4.0]], device=device)
     renderer = get_mesh_renderer(image_size=image_size, device=device)
@@ -112,14 +93,17 @@ def render_rotating_meshes(meshes, image_size, device):
     batch_size = 120
     images = []
     for azim in torch.linspace(0, 360, batch_size):
-        R, T = pytorch3d.renderer.look_at_view_transform(dist=2.7, elev=0, azim=azim)
+        R, T = pytorch3d.renderer.look_at_view_transform(dist=dist, elev=0, azim=azim)
         cameras = pytorch3d.renderer.FoVPerspectiveCameras(R=R, T=T, device=device)
         rend = renderer(mesh_input, cameras=cameras, lights=lights)
-        img = rend.detach().cpu().numpy().clip(0, 1)[0, ..., :3]  # (B, H, W, 4) -> (H, W, 3)
+        img = (
+            rend.detach().cpu().numpy().clip(0, 1)[0, ..., :3]
+        )  # (B, H, W, 4) -> (H, W, 3)
         img *= 255
         images.append(img.astype(np.uint8))
 
     return images
+
 
 def render_mesh(mesh_input, device, image_size=256):
     mesh_input = add_texture_to_mesh(mesh_input)
@@ -133,15 +117,25 @@ def render_mesh(mesh_input, device, image_size=256):
 
     return rend[0, ..., :3].detach().cpu().numpy().clip(0, 1)
 
-def render_rotating_pointclouds(points, image_size, device):
-    renderer = get_pointcloud_renderer(image_size=image_size, device=device)
+
+def render_rotating_pointclouds(
+    points, image_size, device, background_color, radius=0.006, dist=1.2
+):
+    renderer = get_pointcloud_renderer(
+        image_size=image_size,
+        device=device,
+        radius=radius,
+        background_color=background_color,
+    )
     rgb = torch.rand(points.shape).to(device)
     pointcloud = pytorch3d.structures.Pointclouds(points=points, features=rgb)
 
     batch_size = 120
     images = []
     for azim in torch.linspace(0, 360, batch_size):
-        R, T = pytorch3d.renderer.look_at_view_transform(dist=2.7, elev=0, azim=azim)
+        R, T = pytorch3d.renderer.look_at_view_transform(
+            dist=dist, elev=0, azim=azim
+        )  # 2.7
         cameras = pytorch3d.renderer.FoVPerspectiveCameras(R=R, T=T, device=device)
         rend = renderer(pointcloud, cameras=cameras)
         img = rend.detach().cpu().numpy()[0, ..., :3]  # (B, H, W, 4) -> (H, W, 3)
@@ -149,17 +143,21 @@ def render_rotating_pointclouds(points, image_size, device):
         images.append(img.astype(np.uint8))
     return images
 
-def render_pointcloud(points, device, image_size=256):
-    renderer = get_pointcloud_renderer(image_size=image_size, device=device)
+
+def render_pointcloud(points, device, background_color, image_size=256):
+    renderer = get_pointcloud_renderer(
+        image_size=image_size, device=device, background_color=background_color
+    )
 
     rgb = torch.rand(points.shape).to(device)
 
     pointcloud = pytorch3d.structures.Pointclouds(points=points, features=rgb)
-    R, T = pytorch3d.renderer.look_at_view_transform(dist=2.7, elev=30, azim=120)
+    R, T = pytorch3d.renderer.look_at_view_transform(dist=1.2, elev=30, azim=120)  # 2.7
     # R = R @ torch.tensor([[1, 0, 0], [0, 1, 0], [0, 0, 1]]).float()
     cameras = pytorch3d.renderer.FoVPerspectiveCameras(R=R, T=T, device=device)
     rend = renderer(pointcloud, cameras=cameras)
     return rend.detach().cpu().numpy()[0, ..., :3]  # (B, H, W, 4) -> (H, W, 3)
+
 
 def render_rotating_voxels(voxels, device, image_size=256):
     mesh = pytorch3d.ops.cubify(voxels, thresh=0.5)
@@ -174,7 +172,6 @@ def render_rotating_voxels(voxels, device, image_size=256):
 
     lights = pytorch3d.renderer.PointLights(location=[[0, 0.5, -4.0]], device=device)
     renderer = get_mesh_renderer(image_size=image_size, device=device)
-
 
     batch_size = 120
     images = []
@@ -213,7 +210,6 @@ def render_voxels_as_mesh(voxels, device, image_size=256):
 
 
 # def colorize_voxels(voxels):
-
 #     # Ensure the color is a tensor
 #     color_tensor = torch.tensor(color, dtype=torch.float32)
 
@@ -227,49 +223,7 @@ def render_voxels_as_mesh(voxels, device, image_size=256):
 #     # Apply the color to each voxel that is True (non-zero)
 #     for i in range(3):  # Iterate over the RGB color channels
 #         colored_voxels[i][voxel_tensor[0] == 1] = color_tensor[i]
-
 #     return colored_voxels
-
-# def render_voxel(voxels, device, image_size):
-#     """Returns primitive images without any postprocessing."""
-
-#     # voxels: batch x height x width x depth
-#     print("voxels: ", voxels.shape)
-
-#     colors = torch.rand(voxels.shape).to(device=device)
-#     raysampler = NDCMultinomialRaysampler(
-#         image_width=image_size,
-#         image_height=image_size,
-#         n_pts_per_ray=500,  # maximum value if bigger, memory error
-#         min_depth=0.01,
-#         max_depth=10,
-#     )
-#     renderer = VolumeRenderer(
-#         raysampler=raysampler,
-#         raymarcher=EmissionAbsorptionRaymarcher(),
-#     )
-#     R, T = look_at_view_transform(dist=2.7, elev=0, azim=120)
-#     camera = FoVPerspectiveCameras(
-#         R=R,
-#         T=T,
-#         znear=0.01,
-#         zfar=100,
-#         aspect_ratio=1,
-#         fov=45,
-#         device=device,
-#     )
-#     volumes = Volumes(
-#         densities=[voxels],
-#         features=[colors],
-#         voxel_size=0.05,
-#     )
-#     rendered_images, rendered_silhouettes = renderer(cameras=camera, volumes=volumes)
-#     # Is there a difference between
-#     # .cpu().detach().numpy()
-#     # .detach().cpu().numpy()
-#     img = rendered_images[0, ..., :3].cpu().detach().numpy()  # HxWx1
-
-#     return img # np.concatenate([img, img, img], axis=2)
 
 
 def voxelize_xyz(xyz_ref, Z, Y, X, already_mem=False):

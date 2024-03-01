@@ -1,5 +1,5 @@
 # specify the root location where u downloaded the dataset
-root_location = "/home/lai/deep_computer_vision/Supervised_Single_View_to_3D_Objects"
+root_location = "./"
 use_full_dataset = False
 dataset_name = (
     "r2n2_shapenet_dataset_full" if use_full_dataset else "r2n2_shapenet_dataset"

@@ -1,5 +1,4 @@
 import argparse
-import os
 import time
 
 import imageio
@@ -18,6 +17,8 @@ from myutils import (
     render_pointcloud,
     # render_voxel,
     render_voxels_as_mesh,
+    render_rotating_pointclouds,
+    render_rotating_meshes,
 )
 
 
@@ -71,7 +72,7 @@ def fit_mesh(mesh_src, mesh_tgt, args):
     print(f"Done! Takes {total_time} seconds in total.")
 
 
-def fit_pointcloud(pointclouds_src, pointclouds_tgt, args):
+def fit_pointcloud(pointclouds_src, pointclouds_tgt, idx, args):
     start_iter = 0
     start_time = time.time()
     optimizer = torch.optim.Adam([pointclouds_src], lr=args.lr)
@@ -95,18 +96,22 @@ def fit_pointcloud(pointclouds_src, pointclouds_tgt, args):
             print("[%4d/%4d]; loss: %.3f" % (step, args.max_iter, loss_vis))
 
             pc_img = render_pointcloud(
-                pointclouds_src, image_size=128, device=get_device()
+                pointclouds_src,
+                image_size=256,
+                device=get_device(),
+                background_color=(0, 0, 0),
             )
             pc_img *= 255
             fitted_pointclouds.append(pc_img.astype(np.uint8))
     imageio.mimsave(
-        "./output_fit_data/pointcloud_fitted.gif", fitted_pointclouds, fps=5
+        f"./output_fit_data/pointcloud_fitted_{idx}.gif", fitted_pointclouds, fps=5
     )
 
     # Save ground truth.
-    pc_img = render_pointcloud(pointclouds_tgt, image_size=128, device=get_device())
-    pc_img *= 255
-    imageio.imwrite("./output_fit_data/pointcloud_gt.png", pc_img.astype(np.uint8))
+    images = render_rotating_pointclouds(
+        pointclouds_tgt, image_size=256, device=get_device(), background_color=(0, 0, 0)
+    )
+    imageio.mimsave(f"./output_fit_data/pointcloud_gt_{idx}.gif", images, fps=8)
 
     total_time = round(time.time() - start_time, 2)
     print(f"Done! Takes {total_time} seconds in total.")
@@ -157,44 +162,64 @@ def train_model(args):
         dataset_location.SHAPENET_PATH,
         dataset_location.R2N2_PATH,
         dataset_location.SPLITS_PATH,
+        return_all_views=True,
         return_voxels=True,
     )
 
-    feed = r2n2_dataset[5]  # Use 0th image
-    img = feed["images"].cpu().numpy()
-    img *= 255
-    imageio.imwrite("./output_fit_data/groundtruth_image.png", img.astype(np.uint8))
-
-    feed_cuda = {}
-    for k in feed:
-        if torch.is_tensor(feed[k]):
-            feed_cuda[k] = feed[k].to(args.device).float()
-
-    if args.type == "vox":
-        voxels_src = torch.rand(
-            feed_cuda["voxels"].shape, requires_grad=True, device=args.device
+    target_indices = [2, 11, 14]
+    for target_index in target_indices:
+        feed = r2n2_dataset[target_index]  # in CPU
+        img = feed["images"].numpy()
+        img *= 255
+        imageio.imwrite(
+            f"./output_fit_data/groundtruth_image_{target_index}.png",
+            img.astype(np.uint8),
         )
-        # voxel_coords = feed_cuda["voxel_coords"].unsqueeze(0)
-        voxels_tgt = feed_cuda["voxels"]
-        print("voxels_src: ", voxels_src.shape)
 
-        fit_voxel(voxels_src, voxels_tgt, args)
+        feed_cuda = {}
+        for k in feed:
+            if torch.is_tensor(feed[k]):
+                feed_cuda[k] = feed[k].to(args.device).float()
 
-    elif args.type == "point":
         pointclouds_src = torch.randn(
             [1, args.n_points, 3], requires_grad=True, device=args.device
         )
         mesh_tgt = Meshes(verts=[feed_cuda["verts"]], faces=[feed_cuda["faces"]])
-        pointclouds_tgt = sample_points_from_meshes(mesh_tgt, args.n_points)
+        mesh_images = render_rotating_meshes(
+            mesh_tgt, image_size=137, device=get_device(), dist=1.5
+        )
+        imageio.mimsave(
+            f"./output_fit_data/groundtruth_mesh_{target_index}.gif", mesh_images, fps=5
+        )
+        verts = mesh_tgt.verts_packed()
+        print(
+            f"verts.shape: {verts.shape}. Center: {verts.mean(dim=0)}. Scale: {verts.min(dim=0)} to {verts.max(dim=0)}",
+        )
 
-        fit_pointcloud(pointclouds_src, pointclouds_tgt, args)
+        pointclouds_tgt = sample_points_from_meshes(
+            mesh_tgt, args.n_points
+        )  # In GPU, shape: (1, 10000, 3)
+        fit_pointcloud(pointclouds_src, pointclouds_tgt, target_index, args)
 
-    elif args.type == "mesh":
-        # Try different ways to initialize the source mesh.
-        mesh_src = ico_sphere(4, args.device)
-        mesh_tgt = Meshes(verts=[feed_cuda["verts"]], faces=[feed_cuda["faces"]])
+    # if args.type == "vox":
+    #     voxels_src = torch.rand(
+    #         feed_cuda["voxels"].shape, requires_grad=True, device=args.device
+    #     )
+    #     # voxel_coords = feed_cuda["voxel_coords"].unsqueeze(0)
+    #     voxels_tgt = feed_cuda["voxels"]
+    #     print("voxels_src: ", voxels_src.shape)
 
-        fit_mesh(mesh_src, mesh_tgt, args)
+    #     fit_voxel(voxels_src, voxels_tgt, args)
+    # elif args.type == "point":
+
+    # elif args.type == "mesh":
+    #     # Try different ways to initialize the source mesh.
+    #     mesh_src = ico_sphere(4, args.device)
+    #     # mesh_pred = torus(r=1.0, R=3.0, sides=50, rings=100, device=torch.device("cuda:0"))
+
+    #     mesh_tgt = Meshes(verts=[feed_cuda["verts"]], faces=[feed_cuda["faces"]])
+
+    #     fit_mesh(mesh_src, mesh_tgt, args)
 
 
 def get_args_parser():
@@ -210,8 +235,8 @@ def get_args_parser():
 
 
 # python fit_data.py --type "vox"
-# python fit_data.py --type "point"
-# python fit_data.py --type "mesh"
+# python fit_data.py --type "point" --n_points 10000
+# python fit_data.py --type "mesh" --w_smooth 1.0
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Model Fit", parents=[get_args_parser()])
     args = parser.parse_args()
