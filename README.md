@@ -36,6 +36,10 @@ from a specific viewpoint, then everything in this post is inapplicable. 🤣
   <p style="font-size: 14px; color: #777;">Left: Ground truth point cloud. Middle: Single view image. Right: Predicted point cloud.</p>
 </div>
 
+### [Volume Rendering and Neural Radiance Fields]()
+
+Work in progress.
+
 ## Getting Started
 
 All the results can be reproduced by following the instructions below.
