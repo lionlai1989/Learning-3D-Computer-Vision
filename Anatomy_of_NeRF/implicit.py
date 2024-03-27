@@ -1,155 +1,10 @@
 import torch
 import torch.nn.functional as F
-from torch import autograd
-
-from ray_utils import RayBundle
-
-
-# Sphere SDF class
-class SphereSDF(torch.nn.Module):
-    def __init__(self, cfg):
-        super().__init__()
-
-        self.radius = torch.nn.Parameter(
-            torch.tensor(cfg.radius.val).float(), requires_grad=cfg.radius.opt
-        )
-        self.center = torch.nn.Parameter(
-            torch.tensor(cfg.center.val).float().unsqueeze(0),
-            requires_grad=cfg.center.opt,
-        )
-
-    def forward(self, points):
-        points = points.view(-1, 3)
-
-        return (
-            torch.linalg.norm(points - self.center, dim=-1, keepdim=True) - self.radius
-        )
-
-
-# Box SDF class
-class BoxSDF(torch.nn.Module):
-    def __init__(self, cfg):
-        super().__init__()
-
-        self.center = torch.nn.Parameter(
-            torch.tensor(cfg.center.val).float().unsqueeze(0),
-            requires_grad=cfg.center.opt,
-        )
-        self.side_lengths = torch.nn.Parameter(
-            torch.tensor(cfg.side_lengths.val).float().unsqueeze(0),
-            requires_grad=cfg.side_lengths.opt,
-        )
-
-    def forward(self, points):
-        points = points.view(-1, 3)
-        diff = torch.abs(points - self.center) - self.side_lengths / 2.0
-
-        signed_distance = torch.linalg.norm(
-            torch.maximum(diff, torch.zeros_like(diff)), dim=-1
-        ) + torch.minimum(torch.max(diff, dim=-1)[0], torch.zeros_like(diff[..., 0]))
-
-        return signed_distance.unsqueeze(-1)
-
-
-# Torus SDF class
-class TorusSDF(torch.nn.Module):
-    def __init__(self, cfg):
-        super().__init__()
-
-        self.center = torch.nn.Parameter(
-            torch.tensor(cfg.center.val).float().unsqueeze(0),
-            requires_grad=cfg.center.opt,
-        )
-        self.radii = torch.nn.Parameter(
-            torch.tensor(cfg.radii.val).float().unsqueeze(0),
-            requires_grad=cfg.radii.opt,
-        )
-
-    def forward(self, points):
-        points = points.view(-1, 3)
-        diff = points - self.center
-        q = torch.stack(
-            [
-                torch.linalg.norm(diff[..., :2], dim=-1) - self.radii[..., 0],
-                diff[..., -1],
-            ],
-            dim=-1,
-        )
-        return (torch.linalg.norm(q, dim=-1) - self.radii[..., 1]).unsqueeze(-1)
-
-
-sdf_dict = {
-    "sphere": SphereSDF,
-    "box": BoxSDF,
-    "torus": TorusSDF,
-}
-
-
-# Converts SDF into density/feature volume
-class SDFVolume(torch.nn.Module):
-    def __init__(self, cfg):
-        super().__init__()
-
-        self.sdf = sdf_dict[cfg.sdf.type](cfg.sdf)
-
-        self.rainbow = cfg.feature.rainbow if "rainbow" in cfg.feature else False
-        self.feature = torch.nn.Parameter(
-            torch.ones_like(torch.tensor(cfg.feature.val).float().unsqueeze(0)),
-            requires_grad=cfg.feature.opt,
-        )
-
-        self.alpha = torch.nn.Parameter(
-            torch.tensor(cfg.alpha.val).float(), requires_grad=cfg.alpha.opt
-        )
-        self.beta = torch.nn.Parameter(
-            torch.tensor(cfg.beta.val).float(), requires_grad=cfg.beta.opt
-        )
-
-    def _sdf_to_density(self, signed_distance):
-        # Convert signed distance to density with alpha, beta parameters
-        return (
-            torch.where(
-                signed_distance > 0,
-                0.5 * torch.exp(-signed_distance / self.beta),
-                1 - 0.5 * torch.exp(signed_distance / self.beta),
-            )
-            * self.alpha
-        )
-
-    def forward(self, ray_bundle):
-        sample_points = ray_bundle.sample_points.view(-1, 3)
-        depth_values = ray_bundle.sample_lengths[..., 0]
-        deltas = torch.cat(
-            (
-                depth_values[..., 1:] - depth_values[..., :-1],
-                1e10 * torch.ones_like(depth_values[..., :1]),
-            ),
-            dim=-1,
-        ).view(-1, 1)
-
-        # Transform SDF to density
-        signed_distance = self.sdf(ray_bundle.sample_points)
-        density = self._sdf_to_density(signed_distance)
-
-        # Outputs
-        if self.rainbow:
-            base_color = torch.clamp(
-                torch.abs(sample_points - self.sdf.center), 0.02, 0.98
-            )
-        else:
-            base_color = 1.0
-
-        out = {
-            "density": -torch.log(1.0 - density) / deltas,
-            "feature": base_color
-            * self.feature
-            * density.new_ones(sample_points.shape[0], 1),
-        }
-
-        return out
 
 
 class HarmonicEmbedding(torch.nn.Module):
+    """Implement position encoding in NeRF."""
+
     def __init__(
         self,
         in_channels: int = 3,
@@ -189,15 +44,8 @@ class HarmonicEmbedding(torch.nn.Module):
             return torch.cat((embed.sin(), embed.cos()), dim=-1)
 
 
-class LinearWithRepeat(torch.nn.Linear):
-    def forward(self, input):
-        n1 = input[0].shape[-1]
-        output1 = F.linear(input[0], self.weight[:, :n1], self.bias)
-        output2 = F.linear(input[1], self.weight[:, n1:], None)
-        return output1 + output2.unsqueeze(-2)
-
-
 class MLPWithInputSkips(torch.nn.Module):
+    """Implement Fig. 7 where MLP with an input skip connection."""
     def __init__(
         self,
         n_layers: int,
@@ -244,14 +92,14 @@ class MLPWithInputSkips(torch.nn.Module):
         return y
 
 
-# TODO (Q3.1): Implement NeRF MLP
 class NeuralRadianceField(torch.nn.Module):
+    """Implement NeRF."""
+
     def __init__(
         self,
         cfg,
     ):
         super().__init__()
-        print("NeuralRadianceField")
         self.harmonic_embedding_xyz = HarmonicEmbedding(
             3, cfg.n_harmonic_functions_xyz, include_input=False
         )
@@ -281,7 +129,7 @@ class NeuralRadianceField(torch.nn.Module):
         self.feature_vector = torch.nn.Sequential(
             torch.nn.Linear(cfg.n_hidden_neurons_xyz, cfg.n_hidden_neurons_xyz),
             torch.nn.ReLU(),
-        )  # this layer looks weird.
+        )
 
         self.rgb_out_layer = torch.nn.Sequential(
             torch.nn.Linear(
@@ -289,7 +137,7 @@ class NeuralRadianceField(torch.nn.Module):
             ),
             torch.nn.ReLU(),
             torch.nn.Linear(cfg.n_hidden_neurons_dir, 3),
-            torch.nn.Sigmoid(),
+            torch.nn.Sigmoid(),  # (r, g, b) in [0, 1]
         )
 
     def forward(self, ray_bundle):
@@ -309,9 +157,6 @@ class NeuralRadianceField(torch.nn.Module):
             1, feature.shape[1], 1
         )  # (1024, 12) --> (1024, 1, 12) --> (1024, 160, 12)
 
-        # print("feature: ", feature.shape)
-        # print("expanded_direction_encoding: ", expanded_direction_encoding.shape)
-
         # Concatenate feature and expanded_direction_encoding
         rgb = self.rgb_out_layer(
             torch.cat([feature, expanded_direction_encoding], dim=-1)
@@ -321,6 +166,5 @@ class NeuralRadianceField(torch.nn.Module):
 
 
 implicit_dict = {
-    "sdf_volume": SDFVolume,
     "nerf": NeuralRadianceField,
 }
