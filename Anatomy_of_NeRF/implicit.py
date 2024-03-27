@@ -46,6 +46,7 @@ class HarmonicEmbedding(torch.nn.Module):
 
 class MLPWithInputSkips(torch.nn.Module):
     """Implement Fig. 7 where MLP with an input skip connection."""
+
     def __init__(
         self,
         n_layers: int,
@@ -56,40 +57,44 @@ class MLPWithInputSkips(torch.nn.Module):
         input_skips,
     ):
         super().__init__()
+        self._input_skips = set(input_skips)
 
         layers = []
-
-        for i, layeri in enumerate(range(n_layers)):
-            if layeri == 0:
-                dimin = input_dim
-                dimout = hidden_dim
-            elif layeri in input_skips:
-                dimin = hidden_dim + skip_dim
-                dimout = hidden_dim
-            else:
-                dimin = hidden_dim
-                dimout = hidden_dim
+        for i in range(n_layers):
+            # The first and last layer can also be skip layer.
+            dimin = input_dim if i == 0 else hidden_dim  # first layer
+            dimout = output_dim if i == n_layers - 1 else hidden_dim  # last layer
+            if i in self._input_skips:
+                dimin += skip_dim
 
             linear = torch.nn.Linear(dimin, dimout)
 
             if i < n_layers - 1:
-                layers.append(torch.nn.Sequential(linear, torch.nn.ReLU(True)))
-            else:  # `i == n_layers - 1`: Last layer has no activation
+                layers.append(torch.nn.Sequential(linear, torch.nn.ReLU(inplace=True)))
+            elif i == n_layers - 1:  # Last layer has no activation
                 layers.append(torch.nn.Sequential(linear))
 
-        self.mlp = torch.nn.ModuleList(layers)
-        self._input_skips = set(input_skips)
+        self._mlp = torch.nn.ModuleList(layers)
 
-    def forward(self, x: torch.Tensor, viewing_direction: torch.Tensor) -> torch.Tensor:
-        y = x
+    def forward(self, x: torch.Tensor, skip_pos: torch.Tensor) -> torch.Tensor:
+        # NOTE: Python is pass-by-reference and torch.Tensor is mutable.
+        # When passing the same Tensor 'Original' as both `x` and `skip_pos` to this
+        # function, `x` and `skip_pos` will have the same `id` as 'Original'.
+        # Interestingly, when using `ReLU(inplace=True)`, `x` will not overwrite the
+        # original 'Original' Tensor and `skip_pos` Tensor.
+        # Python will create new object for `x` when doing `x = layer(x)` such that the
+        # original 'Original' Tensor and `skip_pos` Tensor will not be effected.
+        # Python is weird.
+        # tmp_id = id(skip_pos)
 
-        for li, layer in enumerate(self.mlp):
-            if li in self._input_skips:
-                y = torch.cat((y, viewing_direction), dim=-1)
+        for i, layer in enumerate(self._mlp):
+            if i in self._input_skips:
+                x = torch.cat((x, skip_pos), dim=-1)
 
-            y = layer(y)
+            x = layer(x)
 
-        return y
+        # assert tmp_id == id(skip_pos)
+        return x
 
 
 class NeuralRadianceField(torch.nn.Module):
@@ -117,25 +122,25 @@ class NeuralRadianceField(torch.nn.Module):
         self.xyz_out_layer = MLPWithInputSkips(
             n_layers=cfg.n_layers_xyz,
             input_dim=embedding_dim_xyz,
-            output_dim=128,
+            output_dim=cfg.n_hidden_neurons_xyz,
             skip_dim=embedding_dim_xyz,
             hidden_dim=cfg.n_hidden_neurons_xyz,
             input_skips=cfg.append_xyz,
         )
         self.density_out_layer = torch.nn.Sequential(
             torch.nn.Linear(cfg.n_hidden_neurons_xyz, 1),
-            torch.nn.ReLU(),  # ensure density being nonnegative
+            torch.nn.ReLU(inplace=True),  # ensure density being nonnegative
         )
         self.feature_vector = torch.nn.Sequential(
             torch.nn.Linear(cfg.n_hidden_neurons_xyz, cfg.n_hidden_neurons_xyz),
-            torch.nn.ReLU(),
+            torch.nn.ReLU(inplace=True),
         )
 
         self.rgb_out_layer = torch.nn.Sequential(
             torch.nn.Linear(
                 embedding_dim_dir + cfg.n_hidden_neurons_xyz, cfg.n_hidden_neurons_dir
             ),
-            torch.nn.ReLU(),
+            torch.nn.ReLU(inplace=True),
             torch.nn.Linear(cfg.n_hidden_neurons_dir, 3),
             torch.nn.Sigmoid(),  # (r, g, b) in [0, 1]
         )
@@ -146,10 +151,11 @@ class NeuralRadianceField(torch.nn.Module):
         dir = ray_bundle.directions  # (num_rays, 3)
         position_encoding = self.harmonic_embedding_xyz(pos)  # (1024, 128, 36)
         direction_encoding = self.harmonic_embedding_dir(dir)  # (1024, 12)
-
+        # tmp = position_encoding.clone()
         xyz_out = self.xyz_out_layer(
             position_encoding, position_encoding
         )  # (1024, 160, 128)
+        # assert torch.equal(position_encoding, tmp)
         density = self.density_out_layer(xyz_out)  # (1024, 160, 1)
         feature = self.feature_vector(xyz_out)  # (1024, 160, 128)
 
