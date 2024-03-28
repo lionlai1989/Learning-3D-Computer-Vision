@@ -1,8 +1,17 @@
 import torch
 
 
-# Sampler which implements stratified (uniform) point sampling along rays
 class StratifiedRaysampler(torch.nn.Module):
+    """
+    Implements stratified sampling along rays in a 3D space, ensuring uniform distribution of
+    sample points between minimum and maximum depths.
+
+    Parameters:
+        n_pts_per_ray (int): Number of points to sample along each ray.
+        min_depth (float): Minimum depth from which to start sampling along the ray.
+        max_depth (float): Maximum depth at which to end sampling along the ray.
+    """
+
     def __init__(self, cfg):
         super().__init__()
 

@@ -2,14 +2,17 @@ import torch
 import torch.nn.functional as F
 
 
-# Convenience class wrapping several ray inputs:
-#   1) Origins -- ray origins
-#   2) Directions -- ray directions
-#   3) Sample points -- sample points along ray direction from ray origin
-#   4) Sample lengths -- distance of sample points from ray origin
-
-
 class RayBundle(object):
+    """
+    The RayBundle class encapsulates information about rays.
+
+    Attributes:
+        origins: The starting points of the rays, each represented as a point in 3D space.
+        directions: The directions in which the rays are cast, represented as normalized vectors.
+        sample_points: Points sampled along the direction of each ray.
+        sample_lengths: Distances from each ray's origin to its respective sampled points.
+    """
+
     def __init__(
         self,
         origins,
@@ -121,16 +124,6 @@ def get_random_pixels_from_image(n_pixels, image_size, camera):
 
 # Get rays from pixel values
 def get_rays_from_pixels(xy_grid, image_size, camera):
-    """_summary_
-
-    Args:
-        xy_grid (torch.float32): shape (num_rays, num_channels)
-        image_size (_type_): _description_
-        camera (_type_): _description_
-
-    Returns:
-        _type_: _description_
-    """
     W, H = image_size[0], image_size[1]
 
     # Map pixels to points on the image plane at Z=1

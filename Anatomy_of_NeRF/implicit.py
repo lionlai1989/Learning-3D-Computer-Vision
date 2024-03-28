@@ -45,7 +45,7 @@ class HarmonicEmbedding(torch.nn.Module):
 
 
 class MLPWithInputSkips(torch.nn.Module):
-    """Implement Fig. 7 where MLP with an input skip connection."""
+    """Implement Figure 7 from [Mildenhall et al. 2020], an MLP with a skip connection."""
 
     def __init__(
         self,
@@ -84,17 +84,19 @@ class MLPWithInputSkips(torch.nn.Module):
         # original 'Original' Tensor and `skip_pos` Tensor.
         # Python will create new object for `x` when doing `x = layer(x)` such that the
         # original 'Original' Tensor and `skip_pos` Tensor will not be effected.
-        # Python is weird.
         # tmp_id = id(skip_pos)
 
+        # Ok, scratch what I wrote above. It seems `x` needs to be reassigned to another
+        # object so the whole program will work. Python is weird.
+        copied_x = x
         for i, layer in enumerate(self._mlp):
             if i in self._input_skips:
-                x = torch.cat((x, skip_pos), dim=-1)
+                copied_x = torch.cat((copied_x, skip_pos), dim=-1)
 
-            x = layer(x)
+            copied_x = layer(copied_x)
 
         # assert tmp_id == id(skip_pos)
-        return x
+        return copied_x
 
 
 class NeuralRadianceField(torch.nn.Module):

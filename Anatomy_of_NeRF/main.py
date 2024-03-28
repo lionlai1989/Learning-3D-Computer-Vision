@@ -371,7 +371,9 @@ def train_nerf(cfg):
                     file_prefix="nerf",
                 )
                 imageio.mimsave(
-                    "images/part_3.gif", [np.uint8(im * 255) for im in test_images]
+                    "images/part_3.gif",
+                    [np.uint8(im * 255) for im in test_images],
+                    loop=0, # Make gif loop indefinitely.
                 )
 
         torch.cuda.empty_cache()

@@ -1,16 +1,22 @@
 import torch
 
 
-# Volume renderer which integrates color and density along rays
-# according to the equations defined in [Mildenhall et al. 2020]
 class VolumeRenderer(torch.nn.Module):
+    """
+    A volume renderer based on the principles outlined in [Mildenhall et al. 2020],
+    designed to integrate color and density information along rays to produce
+    images from 3D volumetric data.
+
+    Parameters:
+        chunk_size (int): The size of data chunks processed at a time.
+        white_background (bool): Not used currently.
+    """
+
     def __init__(self, cfg):
         super().__init__()
 
         self._chunk_size = cfg.chunk_size
-        self._white_background = (
-            cfg.white_background if "white_background" in cfg else False
-        )
+        self._white_background = cfg.white_background
 
     def _compute_weights(self, deltas, rays_density: torch.Tensor, eps: float = 1e-10):
         # deltas (𝛿): (num_rays, num_samples, 1)
