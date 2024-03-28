@@ -27,7 +27,7 @@ renderer:
 
 sampler:
   type: stratified
-  n_pts_per_ray: 160
+  n_pts_per_ray: 256
 
   min_depth: 2.0
   max_depth: 6.0

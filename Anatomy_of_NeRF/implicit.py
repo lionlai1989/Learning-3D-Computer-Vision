@@ -10,51 +10,23 @@ class HarmonicEmbedding(torch.nn.Module):
         in_channels: int = 3,
         n_harmonic_functions: int = 6,
         omega0: float = 1.0,
-        logspace: bool = True,
-        include_input: bool = True,
     ) -> None:
         super().__init__()
 
-        if logspace:
-            frequencies = 2.0 ** torch.arange(
-                n_harmonic_functions,
-                dtype=torch.float32,
-            )
-        else:
-            frequencies = torch.linspace(
-                1.0,
-                2.0 ** (n_harmonic_functions - 1),
-                n_harmonic_functions,
-                dtype=torch.float32,
-            )
-
+        frequencies = 2.0 ** torch.arange(n_harmonic_functions, dtype=torch.float32)
         self.register_buffer("_frequencies", omega0 * frequencies, persistent=False)
-        self.include_input = include_input
         self.output_dim = n_harmonic_functions * 2 * in_channels
-
-        if self.include_input:
-            self.output_dim += in_channels
 
     def forward(self, x: torch.Tensor):
         embed = (x[..., None] * self._frequencies).view(*x.shape[:-1], -1)
-
-        if self.include_input:
-            return torch.cat((embed.sin(), embed.cos(), x), dim=-1)
-        else:
-            return torch.cat((embed.sin(), embed.cos()), dim=-1)
+        return torch.cat((embed.sin(), embed.cos()), dim=-1)
 
 
 class MLPWithInputSkips(torch.nn.Module):
     """Implement Figure 7 from [Mildenhall et al. 2020], an MLP with a skip connection."""
 
     def __init__(
-        self,
-        n_layers: int,
-        input_dim: int,
-        output_dim: int,
-        skip_dim: int,
-        hidden_dim: int,
-        input_skips,
+        self, n_layers, input_dim, output_dim, skip_dim, hidden_dim, input_skips
     ):
         super().__init__()
         self._input_skips = set(input_skips)
@@ -77,42 +49,24 @@ class MLPWithInputSkips(torch.nn.Module):
         self._mlp = torch.nn.ModuleList(layers)
 
     def forward(self, x: torch.Tensor, skip_pos: torch.Tensor) -> torch.Tensor:
-        # NOTE: Python is pass-by-reference and torch.Tensor is mutable.
-        # When passing the same Tensor 'Original' as both `x` and `skip_pos` to this
-        # function, `x` and `skip_pos` will have the same `id` as 'Original'.
-        # Interestingly, when using `ReLU(inplace=True)`, `x` will not overwrite the
-        # original 'Original' Tensor and `skip_pos` Tensor.
-        # Python will create new object for `x` when doing `x = layer(x)` such that the
-        # original 'Original' Tensor and `skip_pos` Tensor will not be effected.
+        # NOTE: Python is pass-by-reference, torch.Tensor is mutable and `ReLU(inplace=True)`.
+        # Does the following code have any UNEXPEXTED side effect when `x is skip_pos`?
         # tmp_id = id(skip_pos)
-
-        # Ok, scratch what I wrote above. It seems `x` needs to be reassigned to another
-        # object so the whole program will work. Python is weird.
-        copied_x = x
         for i, layer in enumerate(self._mlp):
             if i in self._input_skips:
-                copied_x = torch.cat((copied_x, skip_pos), dim=-1)
-
-            copied_x = layer(copied_x)
-
+                x = torch.cat((x, skip_pos), dim=-1)
+            x = layer(x)
         # assert tmp_id == id(skip_pos)
-        return copied_x
+        return x
 
 
 class NeuralRadianceField(torch.nn.Module):
     """Implement NeRF."""
 
-    def __init__(
-        self,
-        cfg,
-    ):
+    def __init__(self, cfg):
         super().__init__()
-        self.harmonic_embedding_xyz = HarmonicEmbedding(
-            3, cfg.n_harmonic_functions_xyz, include_input=False
-        )
-        self.harmonic_embedding_dir = HarmonicEmbedding(
-            3, cfg.n_harmonic_functions_dir, include_input=False
-        )
+        self.harmonic_embedding_xyz = HarmonicEmbedding(3, cfg.n_harmonic_functions_xyz)
+        self.harmonic_embedding_dir = HarmonicEmbedding(3, cfg.n_harmonic_functions_dir)
 
         embedding_dim_xyz = (
             self.harmonic_embedding_xyz.output_dim
@@ -147,23 +101,20 @@ class NeuralRadianceField(torch.nn.Module):
             torch.nn.Sigmoid(),  # (r, g, b) in [0, 1]
         )
 
-    def forward(self, ray_bundle):
-        # ray_bundle: (num_rays, )
+    def forward(self, ray_bundle):  # ray_bundle: (num_rays, )
         pos = ray_bundle.sample_points  # (num_rays, n_pts_per_ray, 3)
         dir = ray_bundle.directions  # (num_rays, 3)
-        position_encoding = self.harmonic_embedding_xyz(pos)  # (1024, 128, 36)
-        direction_encoding = self.harmonic_embedding_dir(dir)  # (1024, 12)
+        position_encoding = self.harmonic_embedding_xyz(pos)
+        direction_encoding = self.harmonic_embedding_dir(dir)
         # tmp = position_encoding.clone()
-        xyz_out = self.xyz_out_layer(
-            position_encoding, position_encoding
-        )  # (1024, 160, 128)
+        xyz_out = self.xyz_out_layer(position_encoding, position_encoding)
         # assert torch.equal(position_encoding, tmp)
-        density = self.density_out_layer(xyz_out)  # (1024, 160, 1)
-        feature = self.feature_vector(xyz_out)  # (1024, 160, 128)
+        density = self.density_out_layer(xyz_out)
+        feature = self.feature_vector(xyz_out)
 
         expanded_direction_encoding = direction_encoding.unsqueeze(1).repeat(
             1, feature.shape[1], 1
-        )  # (1024, 12) --> (1024, 1, 12) --> (1024, 160, 12)
+        )  # (num_rays, 24) --> (num_rays, 1, 24) --> (num_rays, n_pts_per_ray, 24)
 
         # Concatenate feature and expanded_direction_encoding
         rgb = self.rgb_out_layer(
