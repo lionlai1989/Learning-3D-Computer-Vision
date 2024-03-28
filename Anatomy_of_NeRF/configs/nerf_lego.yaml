@@ -4,7 +4,7 @@ type: train_nerf
 
 training:
   num_epochs: 200
-  batch_size: 2048
+  batch_size: 1024
   lr: 0.0005
 
   lr_scheduler_step_size: 50
@@ -22,7 +22,7 @@ data:
 
 renderer:
   type: volume
-  chunk_size: 1024
+  chunk_size: 512
   white_background: False
 
 sampler:
