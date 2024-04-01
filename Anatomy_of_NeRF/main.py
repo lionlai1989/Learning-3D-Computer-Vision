@@ -23,7 +23,7 @@ from ray_utils import (
 )
 from data_utils import (
     dataset_from_config,
-    create_surround_cameras,
+    create_cameras_lego,
     vis_grid,
     vis_rays,
 )
@@ -81,35 +81,34 @@ def render_images(model, cameras, image_size, save=False, file_prefix=""):
         xy_grid = get_pixels_from_image(image_size, camera)  # (65536, 2)
         ray_bundle = get_rays_from_pixels(xy_grid, image_size, camera)
 
-        # TODO (Q1.3): Visualize xy grid using vis_grid
-        if cam_idx == 0 and file_prefix == "":
-            plt.imshow(vis_grid(xy_grid=xy_grid, image_size=image_size))
-            plt.show()
-        # TODO (Q1.3): Visualize rays using vis_rays
-        if cam_idx == 0 and file_prefix == "":
-            plt.imshow(vis_rays(ray_bundle=ray_bundle, image_size=image_size))
-            plt.show()
+        # # TODO (Q1.3): Visualize xy grid using vis_grid
+        # if cam_idx == 0 and file_prefix == "":
+        #     plt.imshow(vis_grid(xy_grid=xy_grid, image_size=image_size))
+        #     plt.show()
+        # # TODO (Q1.3): Visualize rays using vis_rays
+        # if cam_idx == 0 and file_prefix == "":
+        #     plt.imshow(vis_rays(ray_bundle=ray_bundle, image_size=image_size))
+        #     plt.show()
 
-        # TODO (Q1.4): Implement point sampling along rays in sampler.py
-        # ray_sampler = StratifiedRaysampler(cfg=cfg.sampler)
-        # sampled_ray_bundle = ray_sampler(ray_bundle)
+        # # TODO (Q1.4): Implement point sampling along rays in sampler.py
+        # # ray_sampler = StratifiedRaysampler(cfg=cfg.sampler)
+        # # sampled_ray_bundle = ray_sampler(ray_bundle)
 
-        # TODO (Q1.4): Visualize sample points as point cloud
-        if cam_idx == 0 and file_prefix == "":
-            pass
+        # # TODO (Q1.4): Visualize sample points as point cloud
+        # if cam_idx == 0 and file_prefix == "":
+        #     pass
 
         # Implement rendering in renderer.py
         out = model(ray_bundle)
 
-        # Return rendered features (colors)
         image = np.array(
             out["feature"].view(image_size[1], image_size[0], 3).detach().cpu()
-        )
+        )  # Get rendered colors
         all_images.append(image)
 
-        # TODO (Q1.5): Visualize depth
-        if cam_idx == 2 and file_prefix == "":
-            pass
+        # # TODO (Q1.5): Visualize depth
+        # if cam_idx == 2 and file_prefix == "":
+        #     pass
 
         # Save
         if save:
@@ -119,19 +118,37 @@ def render_images(model, cameras, image_size, save=False, file_prefix=""):
     return all_images
 
 
-def render(
-    cfg,
-):
-    # Create model
-    model = Model(cfg)
-    model = model.cuda()
-    model.eval()
+def display_training_data(cfg):
+    train_dataset, val_dataset, _ = get_nerf_datasets(
+        dataset_name=cfg.data.dataset_name,
+        image_size=[cfg.data.image_size[1], cfg.data.image_size[0]],
+    )
 
-    # Render spiral
-    cameras = create_surround_cameras(3.0, n_poses=20)
-    all_images = render_images(model, cameras, cfg, save=False, file_prefix="IMAGE")
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,
+        collate_fn=trivial_collate,
+    )
+    print(f"Rendering {len(train_dataloader)} views on {cfg.data.dataset_name} data.")
 
-    imageio.mimsave("images/part_1.gif", [np.uint8(im * 255) for im in all_images])
+    all_images = []
+    all_cameras = []
+    for index, data in enumerate(train_dataloader):
+        # data: [{"image": tensor, "camera": PerspectiveCameras(), "camera_idx": int}]
+        image = data[0]["image"]  # Tensor, (400, 400, 3], float32, 0., 1.
+        camera = data[0]["camera"]  # PerspectiveCameras()
+        all_images.append(image)
+        all_cameras.append(camera)
+
+    output_path = (
+        Path("./output/rendering_training_data") / f"{cfg.data.dataset_name}.gif"
+    )
+    imageio.mimsave(
+        output_path, [np.uint8(im * 255) for im in all_images], fps=2, loop=0
+    )
+    # TODO: Plot cameras' position and viewing direction in 3D.
 
 
 def train(cfg):
@@ -217,7 +234,7 @@ def train(cfg):
     )
     all_images = render_images(
         model,
-        create_surround_cameras(3.0, n_poses=20),
+        create_cameras_lego(3.0, n_poses=20),
         image_size,
         file_prefix="part_2",
     )
@@ -348,7 +365,9 @@ def train_nerf(cfg):
             and cfg.training.checkpoint_path is not None
             and epoch >= 0
         ):
-            checkpoint_outfile = Path(checkpoint_dir) / f"epoch_{epoch:03}.pth"
+            checkpoint_outfile = (
+                Path(checkpoint_dir) / f"{cfg.data.dataset_name}_epoch_{epoch:05}.pth"
+            )
             print(f"Storing checkpoint {checkpoint_outfile}.")
 
             data_to_store = {
@@ -364,16 +383,16 @@ def train_nerf(cfg):
             with torch.no_grad():
                 test_images = render_images(
                     model,
-                    create_surround_cameras(
+                    create_cameras_lego(
                         4.0, n_poses=20, up=(0.0, 0.0, 1.0), focal_length=2.0
                     ),
                     cfg.data.image_size,
                     file_prefix="nerf",
                 )
                 imageio.mimsave(
-                    "images/part_3.gif",
+                    f"output/{cfg.data.dataset_name}_epoch_{epoch:05}.gif",
                     [np.uint8(im * 255) for im in test_images],
-                    loop=0, # Make gif loop indefinitely.
+                    loop=0,  # Make gif loop indefinitely.
                 )
 
         torch.cuda.empty_cache()
@@ -383,14 +402,14 @@ def train_nerf(cfg):
 def main(cfg: DictConfig):
     os.chdir(hydra.utils.get_original_cwd())
 
-    if cfg.type == "render":
-        render(cfg)
+    if cfg.type == "display":
+        display_training_data(cfg)
     elif cfg.type == "train":
         train(cfg)
     elif cfg.type == "train_nerf":
         train_nerf(cfg)
 
 
-# python3 main.py --config-name=nerf_lego
+# python3 main.py --config-name=train_lego_lowres
 if __name__ == "__main__":
     main()

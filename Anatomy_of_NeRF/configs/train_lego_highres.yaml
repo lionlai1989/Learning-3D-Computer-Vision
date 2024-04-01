@@ -3,7 +3,7 @@ seed: 1
 type: train_nerf
 
 training:
-  num_epochs: 200
+  num_epochs: 1000
   batch_size: 1024
   lr: 0.0005
 
@@ -17,12 +17,12 @@ training:
   render_interval: 10
 
 data:
-  image_size: [128, 128]
+  image_size: [400, 400]
   dataset_name: lego
 
 renderer:
   type: volume
-  chunk_size: 512
+  chunk_size: 1024
   white_background: False
 
 sampler:
@@ -42,5 +42,3 @@ implicit_function:
   density_noise_std: 0.0
   n_layers_xyz: 9
   append_xyz: [5]
-
-

@@ -41,8 +41,8 @@ def dataset_from_config(cfg):
     return dataset
 
 
-# Spiral cameras looking at the origin
-def create_surround_cameras(radius, n_poses=20, up=(0.0, 1.0, 0.0), focal_length=1.0):
+def create_cameras_lego(radius, n_poses=20, up=(0.0, 1.0, 0.0), focal_length=1.0):
+    """Generate revolving cameras for lego dataset."""
     cameras = []
 
     for theta in np.linspace(0, 2 * np.pi, n_poses + 1)[:-1]:
