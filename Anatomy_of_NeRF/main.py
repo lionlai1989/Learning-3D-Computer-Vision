@@ -1,44 +1,31 @@
 import os
-import warnings
+from pathlib import Path
 
 import hydra
+import imageio
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import tqdm
-import imageio
-
 from omegaconf import DictConfig
-from PIL import Image
-from pytorch3d.renderer import PerspectiveCameras, look_at_view_transform
-import matplotlib.pyplot as plt
+from torchinfo import summary
 
-from implicit import implicit_dict
-from sampler import sampler_dict
-from renderer import renderer_dict
-from ray_utils import (
-    sample_images_at_xy,
-    get_pixels_from_image,
-    get_random_pixels_from_image,
-    get_rays_from_pixels,
-)
 from data_utils import (
-    dataset_from_config,
     create_cameras_fern,
     create_cameras_lego,
     create_cameras_materials,
-    vis_grid,
-    vis_rays,
+    dataset_from_config,
 )
-from dataset import (
-    get_nerf_datasets,
-    trivial_collate,
+from dataset import get_nerf_datasets, trivial_collate
+from implicit import implicit_dict
+from ray_utils import (
+    get_pixels_from_image,
+    get_random_pixels_from_image,
+    get_rays_from_pixels,
+    sample_images_at_xy,
 )
-
-from sampler import StratifiedRaysampler
-
-from pathlib import Path
-
-from torchinfo import summary
+from renderer import renderer_dict
+from sampler import sampler_dict
 
 
 class Model(torch.nn.Module):
@@ -77,8 +64,6 @@ def render_images(model, cameras, image_size, save=False, file_prefix=""):
     all_images = []
     device = list(model.parameters())[0].device
 
-    # image_size = cfg.data.image_size
-
     print(f"Rendering model with {len(cameras)} cameras.")
     for cam_idx, camera in enumerate(cameras):
 
@@ -87,24 +72,6 @@ def render_images(model, cameras, image_size, save=False, file_prefix=""):
         xy_grid = get_pixels_from_image(image_size, camera)  # (65536, 2)
         ray_bundle = get_rays_from_pixels(xy_grid, image_size, camera)
 
-        # # TODO (Q1.3): Visualize xy grid using vis_grid
-        # if cam_idx == 0 and file_prefix == "":
-        #     plt.imshow(vis_grid(xy_grid=xy_grid, image_size=image_size))
-        #     plt.show()
-        # # TODO (Q1.3): Visualize rays using vis_rays
-        # if cam_idx == 0 and file_prefix == "":
-        #     plt.imshow(vis_rays(ray_bundle=ray_bundle, image_size=image_size))
-        #     plt.show()
-
-        # # TODO (Q1.4): Implement point sampling along rays in sampler.py
-        # # ray_sampler = StratifiedRaysampler(cfg=cfg.sampler)
-        # # sampled_ray_bundle = ray_sampler(ray_bundle)
-
-        # # TODO (Q1.4): Visualize sample points as point cloud
-        # if cam_idx == 0 and file_prefix == "":
-        #     pass
-
-        # Implement rendering in renderer.py
         out = model(ray_bundle)
 
         image = np.array(
@@ -112,11 +79,6 @@ def render_images(model, cameras, image_size, save=False, file_prefix=""):
         )  # Get rendered colors
         all_images.append(image)
 
-        # # TODO (Q1.5): Visualize depth
-        # if cam_idx == 2 and file_prefix == "":
-        #     pass
-
-        # Save
         if save:
             print("image:", image.shape, image.dtype)
             plt.imsave(f"{file_prefix}_{cam_idx}.png", image)
@@ -155,96 +117,6 @@ def display_training_data(cfg):
         output_path, [np.uint8(im * 255) for im in all_images], fps=2, loop=0
     )
     # TODO: Plot cameras' position and viewing direction in 3D.
-
-
-def train(cfg):
-    # Create model
-    model = Model(cfg)
-    model = model.cuda()
-    model.train()
-
-    # Create dataset
-    train_dataset = dataset_from_config(cfg.data)
-    train_dataloader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=1,
-        shuffle=True,
-        num_workers=0,
-        collate_fn=lambda batch: batch,
-    )
-    image_size = cfg.data.image_size
-
-    # Create optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
-
-    # Render images before training
-    cameras = [item["camera"] for item in train_dataset]
-    render_images(
-        model,
-        cameras,
-        image_size,
-        save=True,
-        file_prefix="images/part_2_before_training",
-    )
-
-    # Train
-    t_range = tqdm.tqdm(range(cfg.training.num_epochs))
-
-    for epoch in t_range:
-        for iteration, batch in enumerate(train_dataloader):
-            image, camera, camera_idx = batch[0].values()
-            image = image.cuda()
-            camera = camera.cuda()
-
-            # Sample rays
-            xy_grid = get_random_pixels_from_image(
-                cfg.training.batch_size, image_size, camera
-            )  # TODO (Q2.1): implement in ray_utils.py
-            ray_bundle = get_rays_from_pixels(xy_grid, image_size, camera)
-            rgb_gt = sample_images_at_xy(image, xy_grid)
-
-            # Run model forward
-            out = model(ray_bundle)
-
-            # TODO (Q2.2): Calculate loss
-            loss = torch.nn.functional.mse_loss(out["feature"], rgb_gt)
-
-            # Backprop
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-        if (epoch % 10) == 0:
-            t_range.set_description(f"Epoch: {epoch:04d}, Loss: {loss:.06f}")
-            t_range.refresh()
-
-    # Print center and side lengths
-    print(
-        "Box center:",
-        tuple(np.array(model.implicit_fn.sdf.center.data.detach().cpu()).tolist()[0]),
-    )
-    print(
-        "Box side lengths:",
-        tuple(
-            np.array(model.implicit_fn.sdf.side_lengths.data.detach().cpu()).tolist()[0]
-        ),
-    )
-
-    # Render images after training
-    render_images(
-        model,
-        cameras,
-        image_size,
-        save=True,
-        file_prefix="images/part_2_after_training",
-    )
-    all_images = render_images(
-        model,
-        create_cameras_lego(3.0, n_poses=20),
-        image_size,
-        file_prefix="part_2",
-    )
-    imageio.mimsave("images/part_2.gif", [np.uint8(im * 255) for im in all_images])
 
 
 def create_model(cfg):
@@ -424,8 +296,6 @@ def main(cfg: DictConfig):
 
     if cfg.type == "display":
         display_training_data(cfg)
-    elif cfg.type == "train":
-        train(cfg)
     elif cfg.type == "train_nerf":
         train_nerf(cfg)
 

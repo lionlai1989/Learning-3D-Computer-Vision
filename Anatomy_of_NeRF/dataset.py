@@ -15,10 +15,7 @@ from pytorch3d.renderer import PerspectiveCameras
 from torch.utils.data import Dataset
 
 
-
-DEFAULT_DATA_ROOT = os.path.join(
-    os.path.dirname(os.path.realpath(__file__)), "data"
-)
+DEFAULT_DATA_ROOT = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
 
 DEFAULT_URL_ROOT = "https://dl.fbaipublicfiles.com/pytorch3d_nerf_data"
 
@@ -169,5 +166,3 @@ def download_data(
 
             with open(local_fl, "wb") as f:
                 f.write(r.content)
-
-
