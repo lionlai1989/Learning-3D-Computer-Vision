@@ -51,7 +51,7 @@ PyTorch from scratch.
   <p style="font-size: 14px; color: #777;">Left: A sequence of training images. Right: Synthesized views under continuous viewing directions.</p>
 </div>
 
-### [Deep Dive into 3D Gaussian Splatting]()
+### [Deep Dive into 3D Gaussian Splatting](https://lionlai1989.github.io/deep-dive-into-3d-gaussian-splatting)
 
 Work in progress.
 
