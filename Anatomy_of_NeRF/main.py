@@ -23,7 +23,9 @@ from ray_utils import (
 )
 from data_utils import (
     dataset_from_config,
+    create_cameras_fern,
     create_cameras_lego,
+    create_cameras_materials,
     vis_grid,
     vis_rays,
 )
@@ -248,7 +250,9 @@ def train(cfg):
 def create_model(cfg):
     def find_checkpoint(checkpoint_dir):
         """Find the checkpoint with largest epoch number."""
-        files = sorted(Path(checkpoint_dir).glob("epoch_*.pth"))
+        files = sorted(
+            Path(checkpoint_dir).glob(f"{cfg.data.dataset_name}_epoch_*.pth")
+        )
         if len(files) == 0:
             return None
         else:
@@ -291,7 +295,7 @@ def create_model(cfg):
     # Load the optimizer state dict in case we are resuming.
     if optimizer_state_dict is not None:
         optimizer.load_state_dict(optimizer_state_dict)
-        optimizer.last_epoch = start_epoch
+        optimizer.last_epoch = start_epoch - 1
 
     # The learning rate scheduling is implemented with LambdaLR PyTorch scheduler.
     def lr_lambda(epoch):
@@ -300,9 +304,11 @@ def create_model(cfg):
         )
 
     lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
-        optimizer, lr_lambda, last_epoch=start_epoch - 1, verbose=False
+        optimizer, lr_lambda, last_epoch=start_epoch - 1
     )
 
+    if checkpoint_file is not None:
+        start_epoch += 1
     return model, optimizer, lr_scheduler, start_epoch, checkpoint_dir
 
 
@@ -363,7 +369,6 @@ def train_nerf(cfg):
         # Adjust the learning rate.
         lr_scheduler.step()
 
-        # Checkpoint.
         if (
             epoch % cfg.training.checkpoint_interval == 0
             and cfg.training.checkpoint_path is not None
@@ -385,24 +390,35 @@ def train_nerf(cfg):
         # Render
         if epoch % cfg.training.render_interval == 0 and epoch >= 0:
             with torch.no_grad():
+                if cfg.data.dataset_name == "fern":
+                    cameras = create_cameras_fern(
+                        0.5, n_poses=20, up=(0.0, 0.0, 1.0), focal_length=1.0
+                    )
+                elif cfg.data.dataset_name == "lego":
+                    cameras = create_cameras_lego(
+                        4.0, n_poses=20, up=(0.0, 0.0, 1.0), focal_length=2.0
+                    )
+                elif cfg.data.dataset_name == "materials":
+                    cameras = create_cameras_materials(
+                        2.0, n_poses=20, up=(0.0, 0.0, 1.0), focal_length=2.0
+                    )
                 test_images = render_images(
                     model,
-                    create_cameras_lego(
-                        4.0, n_poses=20, up=(0.0, 0.0, 1.0), focal_length=2.0
-                    ),
+                    cameras,
                     cfg.data.image_size,
                     file_prefix="nerf",
                 )
                 imageio.mimsave(
                     f"output/{cfg.data.dataset_name}_epoch_{epoch:05}.gif",
                     [np.uint8(im * 255) for im in test_images],
+                    fps=5,
                     loop=0,  # Make gif loop indefinitely.
                 )
 
         torch.cuda.empty_cache()
 
 
-@hydra.main(config_path="./configs", config_name="box")
+@hydra.main(config_path="./configs", config_name="box", version_base=None)
 def main(cfg: DictConfig):
     os.chdir(hydra.utils.get_original_cwd())
 
@@ -414,8 +430,8 @@ def main(cfg: DictConfig):
         train_nerf(cfg)
 
 
-# python3 main.py --config-name=train_lego_lowres
 # python3 main.py --config-name=train_fern_lowres
+# python3 main.py --config-name=train_lego_lowres
 # python3 main.py --config-name=train_materials_lowres
 if __name__ == "__main__":
     main()

@@ -41,12 +41,78 @@ def dataset_from_config(cfg):
     return dataset
 
 
+def create_cameras_fern(radius, n_poses=20, up=(0.0, 1.0, 0.0), focal_length=1.0):
+    """Generate revolving cameras for fern dataset."""
+    cameras = []
+
+    for theta in np.linspace(0, 2 * np.pi, n_poses + 1)[:-1]:
+
+        eye = [
+            2.0,
+            np.cos(theta + np.pi / 2) * radius,
+            np.sin(theta + np.pi / 2) * radius,
+        ]
+
+        R, T = look_at_view_transform(
+            eye=(eye,),
+            at=([0.0, 0.0, 0.0],),
+            up=(up,),
+        )
+
+        cameras.append(
+            PerspectiveCameras(
+                focal_length=torch.tensor([focal_length])[None],
+                principal_point=torch.tensor([0.0, 0.0])[None],
+                R=R,
+                T=T,
+            )
+        )
+
+    return cameras
+
+
 def create_cameras_lego(radius, n_poses=20, up=(0.0, 1.0, 0.0), focal_length=1.0):
     """Generate revolving cameras for lego dataset."""
     cameras = []
 
     for theta in np.linspace(0, 2 * np.pi, n_poses + 1)[:-1]:
 
+        if np.abs(up[1]) > 0:
+            eye = [
+                np.cos(theta + np.pi / 2) * radius,
+                0,
+                -np.sin(theta + np.pi / 2) * radius,
+            ]
+        else:
+            eye = [
+                np.cos(theta + np.pi / 2) * radius,
+                np.sin(theta + np.pi / 2) * radius,
+                2.0,
+            ]
+
+        R, T = look_at_view_transform(
+            eye=(eye,),
+            at=([0.0, 0.0, 0.0],),
+            up=(up,),
+        )
+
+        cameras.append(
+            PerspectiveCameras(
+                focal_length=torch.tensor([focal_length])[None],
+                principal_point=torch.tensor([0.0, 0.0])[None],
+                R=R,
+                T=T,
+            )
+        )
+
+    return cameras
+
+
+def create_cameras_materials(radius, n_poses=20, up=(0.0, 1.0, 0.0), focal_length=1.0):
+    """Generate revolving cameras for materials dataset."""
+    cameras = []
+
+    for theta in np.linspace(0, 2 * np.pi, n_poses + 1)[:-1]:
         if np.abs(up[1]) > 0:
             eye = [
                 np.cos(theta + np.pi / 2) * radius,
