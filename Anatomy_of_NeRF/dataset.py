@@ -96,6 +96,8 @@ def get_nerf_datasets(
     images = torch.stack(torch.chunk(images, n_cameras, dim=0))[..., :3]
     Image.MAX_IMAGE_PIXELS = _image_max_image_pixels
 
+    print(f"The original image shape is {images.shape}")
+
     scale_factors = [s_new / s for s, s_new in zip(images.shape[1:3], image_size)]
 
     if abs(scale_factors[0] - scale_factors[1]) > 1e-3:

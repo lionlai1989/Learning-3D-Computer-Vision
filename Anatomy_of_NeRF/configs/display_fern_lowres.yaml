@@ -1,36 +1,36 @@
 seed: 1
 
-type: train_nerf
+type: display
 
 training:
-  num_epochs: 250
-  batch_size: 1024
-  lr: 0.0001
+  num_epochs: 10000
+  batch_size: 4096 # 4096
+  lr: 0.0005
 
-  lr_scheduler_step_size: 50
-  lr_scheduler_gamma: 0.8
+  lr_scheduler_step_size: 1000
+  lr_scheduler_gamma: 0.9
 
   checkpoint_path: ./checkpoints
-  checkpoint_interval: 50
+  checkpoint_interval: 100
   resume: True
 
-  render_interval: 10
+  render_interval: 100
 
 data:
-  image_size: [400, 400]
-  dataset_name: materials
+  image_size: [252, 189]
+  dataset_name: fern
 
 renderer:
   type: volume
-  chunk_size: 1024
+  chunk_size: 4096 # 32768
   white_background: False
 
 sampler:
   type: stratified
-  n_pts_per_ray: 128
+  n_pts_per_ray: 64
 
-  min_depth: 1.0
-  max_depth: 7.0
+  min_depth: 1.2
+  max_depth: 6.28
 
 implicit_function:
   type: nerf
