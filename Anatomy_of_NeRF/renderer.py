@@ -12,11 +12,11 @@ class VolumeRenderer(torch.nn.Module):
         white_background (bool): Not used currently.
     """
 
-    def __init__(self, cfg):
+    def __init__(self, chunk_size, white_background, **kwargs):
         super().__init__()
 
-        self._chunk_size = cfg.chunk_size
-        self._white_background = cfg.white_background
+        self._chunk_size = chunk_size
+        self._white_background = white_background
 
     def _compute_weights(self, deltas, rays_density: torch.Tensor, eps: float = 1e-10):
         # deltas (𝛿): (num_rays, num_samples, 1)
@@ -90,11 +90,9 @@ class VolumeRenderer(torch.nn.Module):
         return new_ray_bundle
 
     def _aggregate(self, weights: torch.Tensor, rays_feature: torch.Tensor):
-        # Aggregate (weighted sum of) features using weights
-
-        # weights: (num_rays, num_samples, 1)
-        # rays_feature: (num_rays, num_samples, num_channel)
+        # Aggregate weighted sum of features using weights
         num_rays, num_samples, num_channel = rays_feature.shape
+        assert weights.shape == (num_rays, num_samples, 1)
 
         feature = torch.sum(weights * rays_feature, dim=1)
         assert feature.shape == (num_rays, num_channel)
@@ -103,7 +101,6 @@ class VolumeRenderer(torch.nn.Module):
     def forward(self, sampler, implicit_fn, ray_bundle):
         num_rays = ray_bundle.shape[0]
 
-        # Process the chunks of rays.
         chunk_outputs = []
 
         for chunk_start in range(0, num_rays, self._chunk_size):
@@ -173,7 +170,6 @@ class VolumeRenderer(torch.nn.Module):
             # )
             # fine_depth = self._aggregate(fine_weights, fine_depth_values.unsqueeze(-1))
 
-            # Return
             cur_out = {
                 "feature": coarse_feature,
                 "depth": coarse_depth,

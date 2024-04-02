@@ -12,29 +12,30 @@ class StratifiedRaysampler(torch.nn.Module):
         max_depth (float): Maximum depth at which to end sampling along the ray.
     """
 
-    def __init__(self, cfg):
+    def __init__(self, n_pts_per_ray, min_depth, max_depth, **kwargs):
         super().__init__()
 
-        self.n_pts_per_ray = cfg.n_pts_per_ray
-        self.min_depth = cfg.min_depth
-        self.max_depth = cfg.max_depth
+        self.n_pts_per_ray = n_pts_per_ray
+        self.min_depth = min_depth
+        self.max_depth = max_depth
 
     def forward(self, ray_bundle):
-        # Compute z values for self.n_pts_per_ray points uniformly sampled between [near, far]
+        # Compute z values for n_pts_per_ray points uniformly sampled between [near, far]
         z_vals = torch.linspace(
             start=self.min_depth, end=self.max_depth, steps=self.n_pts_per_ray
         ).to(ray_bundle.origins.device)
         z_vals = z_vals.view(
             1, -1, 1
-        )  # Convert `torch.Size([64])` to `torch.Size([1, 64, 1])`
+        )  # Convert `torch.Size([n_pts_per_ray])` to `torch.Size([1, n_pts_per_ray, 1])`
 
-        # Sample points from z values
         directions_view = ray_bundle.directions.view(
             -1, 1, 3
-        )  # `(num_rays, 3)` --> `(num_rays, 1, 3)`
+        )  # (num_rays, 3) -> (num_rays, 1, 3). No copy, just view.
         origins_view = ray_bundle.origins.view(
             -1, 1, 3
-        )  # `(num_rays, 3)` --> `(num_rays, 1, 3)`
+        )  # (num_rays, 3) -> (num_rays, 1, 3). No copy, just view.
+
+        # Sample points from z values
         # (num_rays, n_pts_per_ray, 3) = (1, n_pts_per_ray, 1) * (num_rays, 1, 3) + (num_rays, 1, 3)
         sample_points = z_vals * directions_view + origins_view
 

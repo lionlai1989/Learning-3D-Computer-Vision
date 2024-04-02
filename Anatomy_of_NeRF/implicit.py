@@ -6,10 +6,7 @@ class HarmonicEmbedding(torch.nn.Module):
     """Implement position encoding in NeRF."""
 
     def __init__(
-        self,
-        in_channels: int = 3,
-        n_harmonic_functions: int = 6,
-        omega0: float = 1.0,
+        self, in_channels: int = 3, n_harmonic_functions: int = 6, omega0: float = 1.0
     ) -> None:
         super().__init__()
 

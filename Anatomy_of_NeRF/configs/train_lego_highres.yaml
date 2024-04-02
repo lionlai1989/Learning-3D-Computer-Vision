@@ -3,7 +3,7 @@ seed: 1
 type: train_nerf
 
 training:
-  num_epochs: 1000
+  num_epochs: 200
   batch_size: 1024
   lr: 0.0005
 
@@ -11,10 +11,10 @@ training:
   lr_scheduler_gamma: 0.8
 
   checkpoint_path: ./checkpoints
-  checkpoint_interval: 10
+  checkpoint_interval: 50
   resume: True
 
-  render_interval: 10
+  render_interval: 50
 
 data:
   image_size: [400, 400]

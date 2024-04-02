@@ -38,13 +38,17 @@ from pathlib import Path
 
 from torchinfo import summary
 
-# Model class containing:
-#   1) Implicit volume defining the scene
-#   2) Sampling scheme which generates sample points along rays
-#   3) Renderer which can render an implicit volume given a sampling scheme
-
 
 class Model(torch.nn.Module):
+    """
+    A PyTorch module for rendering scenes defined by implicit volumes.
+
+    This class encapsulates the concept of an implicit volume that defines a scene,
+    along with a sampling scheme to generate sample points along rays. It integrates
+    these components with a renderer capable of producing images from the defined
+    implicit volume using the provided sampling scheme.
+    """
+
     def __init__(self, cfg):
         super().__init__()
 
@@ -54,10 +58,10 @@ class Model(torch.nn.Module):
         )
 
         # Point sampling (raymarching) scheme
-        self.sampler = sampler_dict[cfg.sampler.type](cfg.sampler)
+        self.sampler = sampler_dict[cfg.sampler.type](**cfg.sampler)
 
         # Initialize volume renderer
-        self.renderer = renderer_dict[cfg.renderer.type](cfg.renderer)
+        self.renderer = renderer_dict[cfg.renderer.type](**cfg.renderer)
 
     def forward(self, ray_bundle):
         # Call renderer with
@@ -411,5 +415,7 @@ def main(cfg: DictConfig):
 
 
 # python3 main.py --config-name=train_lego_lowres
+# python3 main.py --config-name=train_fern_lowres
+# python3 main.py --config-name=train_materials_lowres
 if __name__ == "__main__":
     main()
