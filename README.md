@@ -36,7 +36,22 @@ from a specific viewpoint, then everything in this post is inapplicable. 🤣
   <p style="font-size: 14px; color: #777;">Left: Ground truth point cloud. Middle: Single view image. Right: Predicted point cloud.</p>
 </div>
 
-### [Volume Rendering and Neural Radiance Fields]()
+### [Anatomy of NeRF, Neural Radiance Field](https://lionlai1989.github.io/anatomy-of-nerf/)
+
+Neural Radiance Fields (NeRF) is a revolutionary approach to computer graphics and
+vision for synthesizing highly realistic images from sparse sets of images. At its core,
+NeRF models the continuous volumetric scene function using a multi-layer perceptron
+(MLP), mapping spatial coordinates and viewing directions to color and density. In this
+tutorial, I aim to demystify NeRF, explaining NeRF in detail and implementing it using
+PyTorch from scratch.
+
+<div style="text-align:center">
+  <img src="./Anatomy_of_NeRF/images/lego.gif" height="256">
+  <img src="./Anatomy_of_NeRF/images/lego_epoch_00200.gif" height="256">
+  <p style="font-size: 14px; color: #777;">Left: A sequence of training images. Right: Synthesized views under continuous viewing directions.</p>
+</div>
+
+### [Deep Dive into 3D Gaussian Splatting]()
 
 Work in progress.
 
