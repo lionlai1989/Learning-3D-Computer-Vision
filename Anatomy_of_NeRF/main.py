@@ -187,6 +187,7 @@ def create_model(cfg):
 def train_nerf(cfg):
     # Create model
     model, optimizer, lr_scheduler, start_epoch, checkpoint_dir = create_model(cfg)
+    print(f"The current learning rate: {lr_scheduler.get_last_lr()}")
     print(f"NeRF architecture: {model.implicit_fn}")
 
     # Load the training/validation data.
@@ -264,7 +265,7 @@ def train_nerf(cfg):
             with torch.no_grad():
                 if cfg.data.dataset_name == "fern":
                     cameras = create_cameras_fern(
-                        0.5, n_poses=20, up=(0.0, 0.0, 1.0), focal_length=1.0
+                        0.1, n_poses=20, up=(0.0, 1.0, 0.0), focal_length=1.2
                     )
                 elif cfg.data.dataset_name == "lego":
                     cameras = create_cameras_lego(

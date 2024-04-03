@@ -3,8 +3,8 @@ seed: 1
 type: train_nerf
 
 training:
-  num_epochs: 10000
-  batch_size: 4096 # 4096
+  num_epochs: 2000
+  batch_size: 1024 # 4096
   lr: 0.0005
 
   lr_scheduler_step_size: 1000
@@ -22,12 +22,12 @@ data:
 
 renderer:
   type: volume
-  chunk_size: 4096 # 32768
+  chunk_size: 1024 # 32768
   white_background: False
 
 sampler:
   type: stratified
-  n_pts_per_ray: 64
+  n_pts_per_ray: 256
 
   min_depth: 1.2
   max_depth: 6.28

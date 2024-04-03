@@ -48,9 +48,9 @@ def create_cameras_fern(radius, n_poses=20, up=(0.0, 1.0, 0.0), focal_length=1.0
     for theta in np.linspace(0, 2 * np.pi, n_poses + 1)[:-1]:
 
         eye = [
-            2.0,
             np.cos(theta + np.pi / 2) * radius,
             np.sin(theta + np.pi / 2) * radius,
+            6,
         ]
 
         R, T = look_at_view_transform(
