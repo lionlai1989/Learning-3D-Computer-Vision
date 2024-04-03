@@ -300,9 +300,13 @@ def main(cfg: DictConfig):
     elif cfg.type == "train_nerf":
         train_nerf(cfg)
 
-
+# Training each scene:
 # python3 main.py --config-name=train_fern_lowres
 # python3 main.py --config-name=train_lego_lowres
 # python3 main.py --config-name=train_materials_lowres
+# Display images of each sceme:
+# python3 main.py --config-name=display_fern_lowres
+# python3 main.py --config-name=display_lego_lowres
+# python3 main.py --config-name=display_materials_lowres
 if __name__ == "__main__":
     main()

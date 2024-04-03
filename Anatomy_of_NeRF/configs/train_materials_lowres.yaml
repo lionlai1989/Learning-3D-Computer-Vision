@@ -3,8 +3,8 @@ seed: 1
 type: train_nerf
 
 training:
-  num_epochs: 250
-  batch_size: 1024
+  num_epochs: 300
+  batch_size: 512
   lr: 0.0001
 
   lr_scheduler_step_size: 50
@@ -22,7 +22,7 @@ data:
 
 renderer:
   type: volume
-  chunk_size: 1024
+  chunk_size: 512
   white_background: False
 
 sampler:
