@@ -6,8 +6,10 @@ tabulate
 scipy
 tqdm
 omegaconf
-wandb
-omegaconf
+scikit-image
+
+# MLOps
+# wandb
 
 # PyTorch-related library
 torchinfo
@@ -15,15 +17,13 @@ torchinfo
 # Configuration library
 hydra-core
 
-
 # Graphing library
 matplotlib
 plotly
 imageio
 
-# Formatter
+# Formatter and Linter
 ruff
-black
 
 # Testing
 pytest
@@ -35,12 +35,11 @@ ipywidgets
 # Downloading data
 # objaverse
 
-# Processing point cloud
+# Processing point cloud and mesh
 laspy[lazrs,laszip]
-
-# Processing mesh
-trimesh
-pyglet
+plyfile
+# trimesh
+# pyglet
 
 # Processing voxel
 PyMCubes

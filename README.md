@@ -101,8 +101,17 @@ All the results can be reproduced by following the instructions below.
 
 ### Install PyTorch and PyTorch3D
 
--   Please visit the PyTorch official website to find the command to use for your
-    system:
+-   Install `python3-dev` by `sudo apt install python3-dev`.
+
+-   The `~/.bashrc` has the following lines:
+    ```
+    # To Export or Not To Export LD_LIBRARY_PATH. Make Python find in venv*
+    export PATH=/usr/local/cuda-12.1/bin:$PATH
+    # export LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64:$LD_LIBRARY_PATH
+    ```
+
+-   Please visit the [PyTorch official website](https://pytorch.org/get-started/locally/)
+    to find the command to use for your system (CUDA 12.1):
 
     ```shell
     python3 -m pip install torch torchvision torchaudio
