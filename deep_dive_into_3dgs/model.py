@@ -1,17 +1,16 @@
+import gc
 import math
-import torch
-import numpy as np
+from typing import Optional, Tuple
 
-from typing import Tuple, Optional
+import numpy as np
+import torch
+from data_utils import colours_from_spherical_harmonics, load_gaussians_from_ply
 from pytorch3d.ops.knn import knn_points
 from pytorch3d.renderer.cameras import PerspectiveCameras
-from data_utils import load_gaussians_from_ply, colours_from_spherical_harmonics
 from pytorch3d.transforms import quaternion_to_matrix
 
-import gc
 
 class Gaussians:
-
     def __init__(
         self,
         init_type: str,
@@ -20,7 +19,6 @@ class Gaussians:
         num_points: Optional[int] = None,
         isotropic: Optional[bool] = None,
     ):
-
         if device not in ("cpu", "cuda"):
             raise ValueError(f"Unsupported device: {device}")
         else:
@@ -41,7 +39,6 @@ class Gaussians:
             self.is_isotropic = is_isotropic
 
         elif init_type == "points":
-
             if isotropic is not None and not isinstance(isotropic, bool):
                 raise TypeError("isotropic must be either None or True or False.")
             if load_path is None:
@@ -87,7 +84,6 @@ class Gaussians:
         return len(self.means)
 
     def _load_gaussians(self, ply_path: str):
-
         data = dict()
         ply_gaussians = load_gaussians_from_ply(ply_path)
 
@@ -108,7 +104,6 @@ class Gaussians:
         return data, is_isotropic
 
     def _load_points(self, path: str):
-
         data = dict()
         means = np.load(path)
 
@@ -144,7 +139,6 @@ class Gaussians:
         return data
 
     def _load_random(self, num_points: int):
-
         data = dict()
 
         # Initializing means randomly
@@ -188,11 +182,11 @@ class Gaussians:
         half_tan_fov_y = 0.5 * height / fy
 
         view_transform = camera.get_world_to_view_transform()
-        means_view_space = view_transform.transform_points(means_3D) # (N, 3, 3)
+        means_view_space = view_transform.transform_points(means_3D)  # (N, 3, 3)
         # print("means_view_space: ", means_view_space.shape)
         tx = means_view_space[:, 0]
         ty = means_view_space[:, 1]
-        tz = means_view_space[:, 2] # (N, 3)
+        tz = means_view_space[:, 2]  # (N, 3)
         tz2 = tz * tz
 
         lim_x = 1.3 * half_tan_fov_x
@@ -213,7 +207,6 @@ class Gaussians:
         return J  # (N, 2, 3)
 
     def check_if_trainable(self):
-
         attrs = ["means", "pre_act_scales", "colours", "pre_act_opacities"]
         if not self.is_isotropic:
             attrs += ["pre_act_quats"]
@@ -231,7 +224,6 @@ class Gaussians:
             )
 
     def to_cuda(self):
-
         self.pre_act_quats = self.pre_act_quats.cuda()
         self.means = self.means.cuda()
         self.pre_act_scales = self.pre_act_scales.cuda()
@@ -266,10 +258,12 @@ class Gaussians:
         # Based on your answers, can you write a more efficient code for the isotropic case?
         if self.is_isotropic:
             assert scales.shape[1] == 1
-            r_mats = quaternion_to_matrix(quats) #(N, 3, 3)
-            #Compute the scaling matrices from the scale vectors
-            s_mats = torch.diag_embed(scales.repeat(1,3)) #(N, 3, 3)
-            cov_3D = r_mats @ s_mats @ s_mats.transpose(1,2) @ r_mats.transpose(1,2)   # (N, 3, 3)
+            r_mats = quaternion_to_matrix(quats)  # (N, 3, 3)
+            # Compute the scaling matrices from the scale vectors
+            s_mats = torch.diag_embed(scales.repeat(1, 3))  # (N, 3, 3)
+            cov_3D = (
+                r_mats @ s_mats @ s_mats.transpose(1, 2) @ r_mats.transpose(1, 2)
+            )  # (N, 3, 3)
             # tmp_scales = torch.stack([scales, scales, scales], axis=1)
             # rotation_matrices = quaternion_to_matrix(quats)  # (N, 3, 3)
             # cov_3D = torch.einsum(
@@ -283,10 +277,12 @@ class Gaussians:
         # HINT: You can use a function from pytorch3d to convert quaternions to rotation matrices.
         else:
             assert scales.shape[1] == 3
-            r_mats = quaternion_to_matrix(quats) #(N, 3, 3)
-            #Compute the scaling matrices from the scale vectors
-            s_mats = torch.diag_embed(scales.repeat(1,3)) #(N, 3, 3)
-            cov_3D = r_mats @ s_mats @ s_mats.transpose(1,2) @ r_mats.transpose(1,2)   # (N, 3, 3)
+            r_mats = quaternion_to_matrix(quats)  # (N, 3, 3)
+            # Compute the scaling matrices from the scale vectors
+            s_mats = torch.diag_embed(scales.repeat(1, 3))  # (N, 3, 3)
+            cov_3D = (
+                r_mats @ s_mats @ s_mats.transpose(1, 2) @ r_mats.transpose(1, 2)
+            )  # (N, 3, 3)
             # rotation_matrices = quaternion_to_matrix(quats)
             # cov_3D = torch.einsum(
             #     "nij,nk,nl,nlj->nik",
@@ -425,7 +421,6 @@ class Gaussians:
 
     @staticmethod
     def apply_activations(pre_act_quats, pre_act_scales, pre_act_opacities):
-
         # Convert logscales to scales
         scales = torch.exp(pre_act_scales)
 
@@ -439,7 +434,6 @@ class Gaussians:
 
 
 class Scene:
-
     def __init__(self, gaussians: Gaussians):
         self.gaussians = gaussians
         self.device = self.gaussians.device
@@ -459,7 +453,7 @@ class Scene:
         """
         # Calculate the depth using the means of 3D Gaussians and the camera
         means_3D = self.gaussians.means  # (N, 3)
-        cam = camera.get_world_to_view_transform() # (N, 3, 3)
+        cam = camera.get_world_to_view_transform()  # (N, 3, 3)
         cam_means_3D = cam.transform_points(means_3D)  # (N, 3)
         z_vals = cam_means_3D[:, 2]  # (N,)
         return z_vals
@@ -704,9 +698,9 @@ class Scene:
         bg_colour_ = bg_colour_.to(self.device)
 
         # Globally sort gaussians according to their depth value
-        z_vals = self.compute_depth_values(camera) # (num_gaussians, 1)
+        z_vals = self.compute_depth_values(camera)  # (num_gaussians, 1)
         # print("z_vals:", z_vals.shape)
-        idxs = self.get_idxs_to_filter_and_sort(z_vals) # ()
+        idxs = self.get_idxs_to_filter_and_sort(z_vals)  # ()
         # print("idxs: ", idxs.shape)
         pre_act_quats = self.gaussians.pre_act_quats[idxs]
         pre_act_scales = self.gaussians.pre_act_scales[idxs]
@@ -758,7 +752,6 @@ class Scene:
             mask = torch.zeros((H, W, 1), dtype=torch.float32, device=D)
 
             for b_idx in range(num_mini_batches):
-
                 quats_ = quats[b_idx * per_splat : (b_idx + 1) * per_splat]
                 scales_ = scales[b_idx * per_splat : (b_idx + 1) * per_splat]
                 z_vals_ = z_vals[b_idx * per_splat : (b_idx + 1) * per_splat]
