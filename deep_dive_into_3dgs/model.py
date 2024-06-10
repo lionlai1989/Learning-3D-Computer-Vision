@@ -1,16 +1,27 @@
-import gc
 import math
 from typing import Optional, Tuple
 
 import numpy as np
 import torch
-from data_utils import colours_from_spherical_harmonics, load_gaussians_from_ply
+from data_utils import load_gaussians_from_ply
 from pytorch3d.ops.knn import knn_points
 from pytorch3d.renderer.cameras import PerspectiveCameras
 from pytorch3d.transforms import quaternion_to_matrix
 
 
 class Gaussians:
+    """Implementation of the 3D Gaussians described in the paper,
+    "3D Gaussian Splatting for Real-Time Radiance Field Rendering" (3DGS).
+
+    This class provides methods and attributes to handle 3D Gaussian splats, which
+    are used for real-time rendering of radiance fields. The 3D Gaussian splatting
+    technique models the scene as a collection of anisotropic Gaussian functions.
+
+    Link:
+        https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_low.pdf
+
+    """
+
     def __init__(
         self,
         init_type: str,
@@ -173,6 +184,8 @@ class Gaussians:
     def _compute_jacobian(
         self, means_3D: torch.Tensor, camera: PerspectiveCameras, img_size: Tuple
     ):
+        """TODO: Find out the source for the following code."""
+
         if camera.in_ndc():
             raise RuntimeError
 
@@ -235,10 +248,7 @@ class Gaussians:
 
     def compute_cov_3D(self, quats: torch.Tensor, scales: torch.Tensor):
         """
-        Computes the covariance matrices of 3D Gaussians using equation (6) of the 3D
-        Gaussian Splatting paper.
-
-        Link: https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_low.pdf
+        Computes the covariance matrices of 3D Gaussians using equation (6) of the 3DGS.
 
         Args:
             quats   :   A torch.Tensor of shape (N, 4) representing the rotation
@@ -250,16 +260,17 @@ class Gaussians:
         Returns:
             cov_3D  :   A torch.Tensor of shape (N, 3, 3)
         """
-        # NOTE: While technically you can use (almost) the same code for the
-        # isotropic and anisotropic case, can you think of a more efficient
-        # code for the isotropic case?
+        # Quaternions should be already normalized in this function even Gaussians are anisotropic
+        # because `apply_activations()` is called in `render()`.
+        quats_norm = torch.linalg.vector_norm(quats, ord=2, dim=1)
+        assert torch.allclose(
+            quats_norm, torch.ones_like(quats_norm)
+        ), "Not all rows have a Euclidean norm of 1"
 
-        # HINT: Are quats ever used or optimized for isotropic gaussians? What will their value be?
-        # Based on your answers, can you write a more efficient code for the isotropic case?
-
-        # Normalize the quaternions #TODO?
         if self.is_isotropic:
-            # TODO efficieny?
+            # In the case of isotropic, the quaternions are fixed value (not optimized by backpropagation).
+            # Thus, the rotation matrices are always the same throughout the process.
+
             # Convert normalized quaternions to rotation matrices
             r_mats = quaternion_to_matrix(quats)  # (N, 3, 3)
             # Compute the scaling matrices from the scale vectors
@@ -268,9 +279,7 @@ class Gaussians:
                 r_mats @ s_mats @ s_mats.transpose(1, 2) @ r_mats.transpose(1, 2)
             )  # (N, 3, 3)
 
-        # HINT: You can use a function from pytorch3d to convert quaternions to rotation matrices.
         else:
-            ### YOUR CODE HERE ###
             # Convert normalized quaternions to rotation matrices
             r_mats = quaternion_to_matrix(quats)  # (N, 3, 3)
             # Compute the scaling matrices from the scale vectors
@@ -290,10 +299,7 @@ class Gaussians:
         img_size: Tuple,
     ):
         """
-        Computes the covariance matrices of 2D Gaussians using equation (5) of the 3D
-        Gaussian Splatting paper.
-
-        Link: https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_low.pdf
+        Compute the covariance matrices of 2D Gaussians using equation (5) of the 3DGS.
 
         Args:
             quats       :   A torch.Tensor of shape (N, 4) representing the rotation
@@ -306,19 +312,18 @@ class Gaussians:
         Returns:
             cov_3D  :   A torch.Tensor of shape (N, 3, 3)
         """
-        # print("compute_cov_2D -> means_3D: ", means_3D.shape)
         J = self._compute_jacobian(
             means_3D=means_3D, camera=camera, img_size=img_size
         )  # (N, 2, 3)
 
-        # HINT: Can you extract the world to camera rotation matrix (W) from one of the inputs
-        # of this function?
         N = J.shape[0]
-        W = (
-            camera.get_world_to_view_transform()
-            .get_matrix()[..., :3, :3]
-            .repeat(N, 1, 1)
-        )  # (N, 3, 3)
+        # transform_matrix stands for transformation matrix that follows the same convention as Hartley & Zisserman.
+        # I.e., for camera extrinsic parameters R (rotation) and T (translation), we map a 3D point X_world in world
+        # coordinates to a point X_cam in camera coordinates with: X_cam = X_world R + T
+        transform_matrix = (
+            camera.get_world_to_view_transform().get_matrix()
+        )  # (1, 4, 4)
+        W = transform_matrix[..., :3, :3].repeat(N, 1, 1)  # (N, 3, 3)
 
         cov_3D = self.compute_cov_3D(quats=quats, scales=scales)  # (N, 3, 3)
 
@@ -344,18 +349,17 @@ class Gaussians:
             means_2D    :   A torch.Tensor of shape (N, 2) representing the means of
                             2D Gaussians.
         """
-        # HINT: Do note that means_2D have units of pixels. Hence, you must apply a
+        # Note that means_2D have units of pixels. Hence, we must apply a
         # transformation that moves points in the world space to screen space.
-        means_2D = camera.transform_points_screen(means_3D)  # (N, 2)
-        means_2D = means_2D[
-            ..., :-1
-        ]  # drop the 3D dimension ---- used in rasterization pipelines usually which is why pyTorch3D is mainitaing it
-        return means_2D
+        # `transform_points_screen` transforms points from PyTorch3D world/camera
+        # space to screen space.
+        means_2D = camera.transform_points_screen(means_3D)  # (N, 3)
+        return means_2D[..., :-1]  # (N, 2)
 
     @staticmethod
     def invert_cov_2D(cov_2D: torch.Tensor):
         """
-        Using the formula for inverse of a 2D matrix to invert the cov_2D matrix
+        Invert a 2D matrix to obtain its inverse.
 
         Args:
             cov_2D          :   A torch.Tensor of shape (N, 2, 2)
@@ -400,13 +404,10 @@ class Gaussians:
                                 power of the N 2D Gaussians at every pixel location in an image.
         """
         # HINT: Refer to README for a relevant equation
-        diff = (points_2D - means_2D).unsqueeze(-1)  # N, HW, 2, 1
-        cov_2D_inverse = cov_2D_inverse.unsqueeze(1)  # N, 1,  2, 2
-        power = (
-            -0.5 * diff.transpose(-2, -1) @ cov_2D_inverse @ diff
-        )  # ---> N, H*W, 1, 1
-        power = power.squeeze(-1).squeeze(-1)
-        return power
+        diff = (points_2D - means_2D).unsqueeze(-1)  # (N, H*W, 2, 1)
+        cov_2D_inverse = cov_2D_inverse.unsqueeze(1)  # (N, 1, 2, 2)
+        power = -0.5 * diff.transpose(-2, -1) @ cov_2D_inverse @ diff  # (N, H*W, 1, 1)
+        return power.squeeze(-1).squeeze(-1)
 
     @staticmethod
     def apply_activations(pre_act_quats, pre_act_scales, pre_act_opacities):
@@ -440,12 +441,14 @@ class Scene:
         Returns:
             z_vals  :   A torch.Tensor of shape (N,) with the depth of each 3D Gaussian.
         """
-        # HINT: You can use get the means of 3D Gaussians self.gaussians and calculate
-        # the depth using the means and the camera
-        camera = camera.to(self.device)
+        # We can use use the means of 3D Gaussians (N, 3), `self.gaussians.means`, and the camera
+        # to calculate the depth wrt the camera space.
+        # We transform (NOT project) input points from world to camera space. If camera is defined
+        # in NDC space, the projected points are in NDC space. If camera is defined in screen space,
+        # the projected points are in screen space.
         xyz_cam = camera.get_world_to_view_transform().transform_points(
             self.gaussians.means
-        )
+        )  # (N, 3)
         z_vals = xyz_cam[..., -1]  # (N,)
         return z_vals
 
@@ -721,7 +724,6 @@ class Scene:
         if num_mini_batches == 1:
             # Directly splat all gaussians onto the image
 
-            # Get image, depth and mask via splatting
             image, depth, mask, _ = self.splat(
                 camera, means_3D, z_vals, quats, scales, colours, opacities, img_size
             )
@@ -745,7 +747,6 @@ class Scene:
                 means_3D_ = means_3D[b_idx * per_splat : (b_idx + 1) * per_splat]
                 opacities_ = opacities[b_idx * per_splat : (b_idx + 1) * per_splat]
 
-                # Get image, depth and mask via splatting
                 image_, depth_, mask_, start_transmittance = self.splat(
                     camera=camera,
                     means_3D=means_3D_,
