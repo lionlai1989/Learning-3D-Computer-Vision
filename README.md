@@ -51,9 +51,21 @@ PyTorch from scratch.
   <p style="font-size: 14px; color: #777;">Left: A sequence of training images. Right: Synthesized views under continuous viewing directions.</p>
 </div>
 
+*NOTE:* More work is required to make inverse sampling and fine sampling work.
+
 ### [Deep Dive into 3D Gaussian Splatting](https://lionlai1989.github.io/deep-dive-into-3d-gaussian-splatting)
 
-Work in progress.
+<div style="text-align:center">
+  <img src="Deep_Dive_into_3D_Gaussian_Splatting/images/q1_training_progress.gif" height="256">
+  <p style="font-size: 14px; color: #777;">The figure shows the process of 3D Gaussian changing its properties to align to viewing directions.</p>
+</div>
+
+3D Gaussian Splatting (3DGS) is a powerful technique for generating novel views from
+a set of images and their poses. In this section, I will cover the basics of 3DGS.
+
+*NOTE:* Advanced techniques in 3DGS, such as splitting and deleting 3D Gaussians, are
+not yet implemented. The code in `Deep_Dive_into_3D_Gaussian_Splatting/` has been
+tested only on an NVIDIA L4 GPU with 24 GB memory.
 
 ## Getting Started
 
