@@ -9,18 +9,23 @@ from tqdm import tqdm
 from model import Scene, Gaussians
 from torch.utils.data import DataLoader
 from data_utils import CowDataset, visualize_renders
+from data_utils_harder_scene import get_nerf_datasets, trivial_collate
+
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 
 import gc
+
 
 def make_trainable(gaussians):
     # Find all relevant attributes of gaussians and make them trainable.
     attrs = ["means", "pre_act_scales", "colours", "pre_act_opacities"]
     if not gaussians.is_isotropic:
+        print("3D Gaussians are anisotropic.")
         # If anisotropic, perform gradient descent on `pre_act_quats`.
         attrs += ["pre_act_quats"]
-        
+
     # TODO: spherical_harmonics
+    attrs += ["spherical_harmonics"]
 
     for attr in attrs:
         param = getattr(gaussians, attr)
@@ -45,21 +50,31 @@ def setup_optimizer(gaussians):
 
 
 def run_training(args):
-
     if not os.path.exists(args.out_path):
         os.makedirs(args.out_path, exist_ok=True)
 
     # Setting up dataset
-    train_dataset = CowDataset(root=args.data_path, split="train")
-    test_dataset = CowDataset(root=args.data_path, split="test")
-
+    if args.dataset_name == "cow":
+        train_dataset = CowDataset(root=args.data_path, split="train")
+        test_dataset = CowDataset(root=args.data_path, split="test")
+        collate_fn = CowDataset.collate_fn
+    elif args.dataset_name == "materials":
+        train_dataset, test_dataset, _ = get_nerf_datasets(
+            dataset_name="materials",
+            data_root=args.data_path,
+            image_size=[128, 128],
+        )
+        collate_fn = trivial_collate
+    else:
+        raise ValueError(f"Unrecognize dataset {args.dataset_name}")
+    
     train_loader = DataLoader(
         train_dataset,
         batch_size=1,
         shuffle=True,
         num_workers=0,
         drop_last=True,
-        collate_fn=CowDataset.collate_fn,
+        collate_fn=collate_fn,
     )
     test_loader = DataLoader(
         test_dataset,
@@ -67,7 +82,7 @@ def run_training(args):
         shuffle=False,
         num_workers=0,
         drop_last=True,
-        collate_fn=CowDataset.collate_fn,
+        collate_fn=collate_fn,
     )
     train_itr = iter(train_loader)
 
@@ -87,7 +102,7 @@ def run_training(args):
     # Init gaussians and scene. Do note that we are setting isotropic to True
     gaussians = Gaussians(
         load_path=train_dataset.points_path,
-        init_type="points",
+        init_type=args.init_type,
         device=args.device,
         isotropic=args.isotropic,
     )
@@ -103,7 +118,6 @@ def run_training(args):
     mse_loss = torch.nn.MSELoss(reduction="mean")
     # criterion = L1Loss()
     for itr in range(args.num_itrs):
-
         # Fetching data
         try:
             data = next(train_itr)
@@ -128,7 +142,7 @@ def run_training(args):
         # Compute MSE loss. TODO: Should I normalize the image?
         loss = mse_loss(pred_img, gt_img)
         # loss = criterion(pred_img, gt_img)
-        
+
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -143,12 +157,11 @@ def run_training(args):
         pred_img.detach_().cpu()
 
         # Delete variables to free memory
-        del gt_img, camera, gt_mask, pred_img# , loss
+        del gt_img, camera, gt_mask, pred_img  # , loss
         gc.collect()
 
         # Empty the CUDA cache
         torch.cuda.empty_cache()
-
 
         if itr % args.viz_freq == 0:
             viz_frame = visualize_renders(
@@ -197,7 +210,6 @@ def run_training(args):
     # Running evaluation using the test dataset
     psnr_vals, ssim_vals = [], []
     for test_data in tqdm(test_loader, desc="Running Evaluation"):
-
         gt_img, camera, gt_mask = test_data
         gt_img = gt_img[0].cuda()
         camera = camera[0].cuda()
@@ -230,7 +242,6 @@ def run_training(args):
 
 
 def get_args():
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--out_path",
@@ -260,23 +271,33 @@ def get_args():
     )
     parser.add_argument(
         "--num_itrs",
-        default=50, # 2000
+        default=50,  # 2000
         type=int,
         help="Number of iterations to train the model.",
     )
     parser.add_argument(
         "--viz_freq",
-        default=5, # 20
+        default=5,  # 20
         type=int,
         help="Frequency with which visualization should be performed.",
     )
     parser.add_argument("--device", default="cuda", type=str, choices=["cuda", "cpu"])
-    parser.add_argument("--isotropic", default=True, type=bool, help="3D Gaussian is isotropic.")
+    parser.add_argument("--isotropic", default=None, help="3D Gaussian is isotropic.")
+    parser.add_argument(
+        "--init_type",
+        required=True,
+        type=str,
+        help="Data type to be initialized.",
+    )
+    parser.add_argument("--dataset-name", type=str)
     args = parser.parse_args()
     return args
 
 
-# python3 train.py --gaussians_per_splat 1000
+# python3 train.py --init_type points --> cow data
+# python3 train.py --init_type points --isotropic False --> cow data anisotropic
+# python3 train.py --init_type gaussians --data_path ./data/sledge.ply --> sledge data
+# python3 train.py --init_type gaussians --data_path ./data/materials --dataset-name "materials"
 if __name__ == "__main__":
     args = get_args()
     run_training(args)
