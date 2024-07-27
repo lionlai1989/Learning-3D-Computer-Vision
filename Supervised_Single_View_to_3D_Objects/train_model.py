@@ -2,7 +2,7 @@ import argparse
 import time
 
 import torch
-import wandb
+# import wandb not needed
 from pytorch3d.datasets.r2n2.utils import collate_batched_R2N2
 from pytorch3d.ops import sample_points_from_meshes
 from tqdm import tqdm
